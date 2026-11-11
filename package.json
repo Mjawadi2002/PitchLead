@@ -1,0 +1,74 @@
+{
+  "name": "leadpitch",
+  "productName": "Leadpitch",
+  "version": "0.1.0",
+  "description": "Find, score and win leads with Claude.",
+  "author": "Mouhanned Jawadi",
+  "main": "./out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "icons": "electron scripts/make-icons.cjs",
+    "package": "electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@phosphor-icons/react": "2.1.10",
+    "motion": "11.18.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.3.4",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "electron-vite": "2.3.0",
+    "typescript": "5.6.3",
+    "vite": "5.4.21"
+  },
+  "build": {
+    "appId": "com.leadpitch.app",
+    "productName": "Leadpitch",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/skill",
+        "to": "skill"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Leadpitch"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.business"
+    }
+  }
+}

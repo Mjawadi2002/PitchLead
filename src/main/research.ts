@@ -2,14 +2,28 @@ import { app } from 'electron'
 import type { ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { join } from 'path'
-import type { Lead, ResearchInput, Run, RunEvent } from '@shared/types'
+import type { BatchState, Lead, ResearchInput, Run, RunEvent } from '@shared/types'
 import { BATCH_SIZE, MAX_LEADS, PHASES } from '@shared/types'
-import { AUTH_ERROR, extractJson, killTree, readIfExists, resolveClaude, spawnClaude, writeText } from './claude'
+import { AUTH_ERROR, LIMIT_ERROR, extractJson, killTree, readIfExists, resolveClaude, spawnClaude, writeText } from './claude'
 import { researchSystemPrompt, researchUserPrompt } from './prompts'
 import { db, save } from './store'
+import { noteLimit } from './usage'
 
-const active = new Map<string, ChildProcess>()
+/** Every Claude Code session a run has open, so Stop can end all of them. */
+const children = new Map<string, Set<ChildProcess>>()
 const running = new Set<string>()
+
+/** Different search angles keep parallel batches from finding the same companies. */
+const ANGLES = [
+  'companies hiring now for roles your product helps with (job boards, careers pages)',
+  'companies that recently opened, launched, expanded or raised money (news, press releases)',
+  'companies whose customer reviews or forums mention the pain your product solves',
+  'industry directories, association member lists and "best of" lists for the location',
+  'local and trade news, events and award lists from the last 12 months',
+  'competitors and lookalikes of the strongest fits, and companies using adjacent tools',
+  'smaller and newer companies that are less visible but growing fast',
+  'companies in neighbouring cities or regions within the requested area'
+]
 
 interface LeadsFile {
   summary?: string
@@ -20,6 +34,9 @@ interface LeadsFile {
 const norm = (s: string) => s.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/[^a-z0-9]/g, '')
 const str = (v: unknown, max = 600) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => str(x, 400)).filter(Boolean).slice(0, 6) : typeof v === 'string' && v ? [v] : [])
+const url = (v: unknown) => { const s = str(v, 300); return /^https?:\/\//i.test(s) ? s : '' }
+const email = (v: unknown) => { const s = str(v, 120); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s : '' }
+const phone = (v: unknown) => { const s = str(v, 40); return /\d{5,}/.test(s.replace(/\D/g, '')) ? s : '' }
 
 function titleFor(input: ResearchInput): string {
   const parts = [input.industry, input.location].map((s) => s.trim()).filter(Boolean)
@@ -31,10 +48,10 @@ export function cancelRun(id: string): void {
   if (run && run.status === 'running') {
     run.status = 'cancelled'
     run.finishedAt = Date.now()
+    for (const b of run.batchStates ?? []) if (b.status === 'running' || b.status === 'waiting') b.status = 'failed'
     save()
   }
-  const child = active.get(id)
-  if (child) killTree(child)
+  for (const c of children.get(id) ?? []) killTree(c)
 }
 
 interface BatchResult {
@@ -42,7 +59,6 @@ interface BatchResult {
   error?: string
   summary?: string
   assumptions?: string[]
-  costUsd?: number
 }
 
 export async function startRun(input: ResearchInput, notify: () => void): Promise<string> {
@@ -58,6 +74,15 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
   // LP_BATCH_SIZE lets tests use tiny batches; normal use keeps BATCH_SIZE.
   const batchSize = Number(process.env.LP_BATCH_SIZE) > 0 ? Number(process.env.LP_BATCH_SIZE) : BATCH_SIZE
   const batches = Math.ceil(target / batchSize)
+  const parallel = Math.max(1, Math.min(5, settings.parallel || 3, batches))
+  const batchStates: BatchState[] = Array.from({ length: batches }, (_, i) => ({
+    n: i + 1,
+    status: 'waiting',
+    want: Math.min(batchSize, target - i * batchSize),
+    found: 0,
+    phase: 0,
+    angle: batches > 1 ? ANGLES[i % ANGLES.length] : ''
+  }))
   const run: Run = {
     id: randomUUID(),
     title: titleFor(input),
@@ -68,11 +93,14 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
     events: [],
     phase: 0,
     batch: 0,
-    batches
+    batches,
+    batchStates,
+    parallel
   }
   data.runs.unshift(run)
   settings.lastInput = run.input
   running.add(run.id)
+  children.set(run.id, new Set())
   save()
 
   const runDir = join(app.getPath('userData'), 'runs', run.id)
@@ -82,17 +110,69 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
   let pending = false
   const push = (e: Omit<RunEvent, 't'>) => {
     run.events.push({ t: Date.now(), ...e })
-    if (run.events.length > 3000) run.events.splice(0, run.events.length - 3000)
+    if (run.events.length > 4000) run.events.splice(0, run.events.length - 4000)
     if (!pending) {
       pending = true
-      setTimeout(() => { pending = false; save(); notify() }, 120)
+      setTimeout(() => { pending = false; save(); notify() }, 150)
     }
   }
+  const stopped = () => run.status === 'cancelled'
+  // Overall phase shown in the UI: the furthest phase any batch has reached.
+  const syncPhase = () => { run.phase = Math.max(0, ...(run.batchStates ?? []).map((b) => b.phase)) }
 
-  /** One Claude Code session that looks for `want` more companies. */
-  const runBatch = (batchNo: number, want: number): Promise<BatchResult> =>
+  /** Adds leads from one batch, skipping any company already known. Shared by all batches. */
+  const addLeads = (parsed: LeadsFile, state: BatchState): number => {
+    const seen = new Set(data.leads.flatMap((l) => [norm(l.name), norm(l.website)]).filter(Boolean))
+    const now = Date.now()
+    let added = 0
+    for (const raw of parsed.leads ?? []) {
+      if (run.leadIds.length >= target) break
+      const name = str(raw.name, 120)
+      if (!name) continue
+      const website = url(raw.website)
+      if (seen.has(norm(name)) || (website && seen.has(norm(website)))) continue
+      seen.add(norm(name))
+      if (website) seen.add(norm(website))
+      const lead: Lead = {
+        id: randomUUID(),
+        runId: run.id,
+        name,
+        website,
+        industry: str(raw.industry, 80),
+        size: str(raw.size, 80),
+        location: str(raw.location, 120),
+        score: Math.max(1, Math.min(10, Math.round(Number(raw.score) || 5))),
+        scoreReason: str(raw.scoreReason),
+        decisionMaker: str(raw.decisionMaker, 120),
+        linkedin: /^https?:\/\/([a-z]+\.)?linkedin\.com\//i.test(str(raw.linkedin)) ? str(raw.linkedin) : '',
+        email: email(raw.email),
+        phone: phone(raw.phone),
+        contactName: str(raw.contactName, 120),
+        contactUrl: url(raw.contactUrl),
+        signal: str(raw.signal, 200),
+        why: list(raw.why),
+        valueProp: str(raw.valueProp),
+        strategy: str(raw.strategy),
+        starters: list(raw.starters),
+        stage: 'researched',
+        notes: '',
+        starred: false,
+        createdAt: now,
+        updatedAt: now,
+        stageChangedAt: now
+      }
+      data.leads.push(lead)
+      run.leadIds.push(lead.id)
+      added++
+    }
+    state.found += added
+    return added
+  }
+
+  /** One Claude Code session that looks for `state.want` companies. */
+  const runBatch = (state: BatchState): Promise<BatchResult> =>
     new Promise((resolve) => {
-      const dir = join(runDir, `batch-${batchNo}`)
+      const dir = join(runDir, `batch-${state.n}`)
       writeText(join(dir, '.keep'), '')
       const tools = ['Read', 'Glob', 'Grep', 'Write', ...(settings.webResearch ? ['WebSearch', 'WebFetch'] : [])].join(',')
       const args = [
@@ -107,10 +187,13 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
       if (input.folder) args.push('--add-dir', input.folder)
 
       const child = spawnClaude(path, args, { cwd: dir, apiKey })
-      active.set(run.id, child)
+      children.get(run.id)?.add(child)
+      state.status = 'running'
+      state.phase = 0
+      const tag = batches > 1 ? state.n : undefined
       let buf = ''
       let stderr = ''
-      let result: { is_error?: boolean; result?: string; total_cost_usd?: number; subtype?: string } | null = null
+      let result: { is_error?: boolean; result?: string; subtype?: string } | null = null
 
       const onLine = (line: string) => {
         let j: any
@@ -122,22 +205,23 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
                 const m = l.match(/PHASE\s*(\d)\s*[:\-.]?\s*(.*)/i)
                 if (m) {
                   const n = Math.min(PHASES.length, Math.max(1, Number(m[1])))
-                  if (n > run.phase) {
-                    run.phase = n
-                    push({ kind: 'phase', text: PHASES[n - 1], phase: n })
+                  if (n > state.phase) {
+                    state.phase = n
+                    syncPhase()
+                    push({ kind: 'phase', text: PHASES[n - 1], phase: n, batch: tag })
                   }
                 }
               }
               const plain = c.text.replace(/PHASE\s*\d[^\n]*\n?/gi, '').trim()
-              if (plain && plain.length < 220 && !plain.startsWith('{')) push({ kind: 'note', text: plain.split('\n')[0] })
+              if (plain && plain.length < 220 && !plain.startsWith('{')) push({ kind: 'note', text: plain.split('\n')[0], batch: tag })
             }
             if (c.type === 'tool_use') {
               const i = c.input ?? {}
-              if (c.name === 'WebSearch') push({ kind: 'search', text: str(i.query, 200) })
-              else if (c.name === 'WebFetch') push({ kind: 'fetch', text: str(i.url, 300) })
-              else if (c.name === 'Read') push({ kind: 'read', text: str(i.file_path, 300) })
-              else if (c.name === 'Glob' || c.name === 'Grep') push({ kind: 'read', text: str(i.pattern, 200) })
-              else if (c.name === 'Write') push({ kind: 'write', text: str(i.file_path, 300).split(/[\\/]/).pop() ?? '' })
+              if (c.name === 'WebSearch') push({ kind: 'search', text: str(i.query, 200), batch: tag })
+              else if (c.name === 'WebFetch') push({ kind: 'fetch', text: str(i.url, 300), batch: tag })
+              else if (c.name === 'Read') push({ kind: 'read', text: str(i.file_path, 300), batch: tag })
+              else if (c.name === 'Glob' || c.name === 'Grep') push({ kind: 'read', text: str(i.pattern, 200), batch: tag })
+              else if (c.name === 'Write') push({ kind: 'write', text: str(i.file_path, 300).split(/[\\/]/).pop() ?? '', batch: tag })
             }
           }
         }
@@ -154,100 +238,92 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
         }
       })
       child.stderr?.on('data', (d) => (stderr += d))
-      child.stdin?.end(researchUserPrompt({ ...input, count: want }, data.leads.map((l) => l.name)))
+      child.stdin?.end(researchUserPrompt({ ...input, count: state.want }, data.leads.map((l) => l.name), state.angle || undefined))
 
-      child.on('error', (e) => { active.delete(run.id); resolve({ added: 0, error: e.message }) })
+      // A batch that runs past 30 minutes is stopped so it cannot hold up the whole run.
+      let timedOut = false
+      const limit = setTimeout(() => { timedOut = true; killTree(child) }, 30 * 60_000)
+      const done = (res: BatchResult) => {
+        clearTimeout(limit)
+        children.get(run.id)?.delete(child)
+        state.status = res.error ? 'failed' : 'done'
+        if (!res.error) state.phase = PHASES.length
+        syncPhase()
+        resolve(res)
+      }
+      child.on('error', (e) => done({ added: 0, error: e.message }))
       child.on('close', () => {
-        active.delete(run.id)
         if (buf.trim()) onLine(buf.trim())
-        if (run.status === 'cancelled') return resolve({ added: 0 })
+        if (stopped()) return done({ added: 0 })
+        if (timedOut && !result) return done({ added: 0, error: 'This batch took longer than 30 minutes and was stopped.' })
         const r = result as typeof result
-        if (!r) return resolve({ added: 0, error: (stderr.trim() || 'Claude stopped without an answer.').slice(0, 500) })
+        if (!r) return done({ added: 0, error: (stderr.trim() || 'Claude stopped without an answer.').slice(0, 500) })
         if (r.is_error || r.subtype !== 'success') {
           const msg = String(r.result || stderr || 'Claude returned an error.')
-          return resolve({ added: 0, error: AUTH_ERROR.test(msg) ? `AUTH: ${msg}` : msg.slice(0, 500) })
+          if (LIMIT_ERROR.test(msg)) noteLimit(msg)
+          return done({ added: 0, error: AUTH_ERROR.test(msg) ? `AUTH: ${msg}` : msg.slice(0, 500) })
         }
         const parsed = extractJson<LeadsFile>(readIfExists(join(dir, 'leads.json')) ?? '') ?? extractJson<LeadsFile>(String(r.result ?? ''))
-        if (!parsed?.leads?.length) return resolve({ added: 0, costUsd: r.total_cost_usd })
-
-        // Add as we go, so a stopped or failed later batch keeps these leads.
-        const seen = new Set(data.leads.flatMap((l) => [norm(l.name), norm(l.website)]).filter(Boolean))
-        const now = Date.now()
-        let added = 0
-        for (const raw of parsed.leads) {
-          const name = str(raw.name, 120)
-          if (!name) continue
-          const website = str(raw.website, 300)
-          if (seen.has(norm(name)) || (website && seen.has(norm(website)))) continue
-          seen.add(norm(name))
-          if (website) seen.add(norm(website))
-          const lead: Lead = {
-            id: randomUUID(),
-            runId: run.id,
-            name,
-            website,
-            industry: str(raw.industry, 80),
-            size: str(raw.size, 80),
-            location: str(raw.location, 120),
-            score: Math.max(1, Math.min(10, Math.round(Number(raw.score) || 5))),
-            scoreReason: str(raw.scoreReason),
-            decisionMaker: str(raw.decisionMaker, 120),
-            linkedin: /^https?:\/\/([a-z]+\.)?linkedin\.com\//i.test(str(raw.linkedin)) ? str(raw.linkedin) : '',
-            signal: str(raw.signal, 200),
-            why: list(raw.why),
-            valueProp: str(raw.valueProp),
-            strategy: str(raw.strategy),
-            starters: list(raw.starters),
-            stage: 'researched',
-            notes: '',
-            starred: false,
-            createdAt: now,
-            updatedAt: now,
-            stageChangedAt: now
-          }
-          data.leads.push(lead)
-          run.leadIds.push(lead.id)
-          added++
-        }
-        resolve({ added, summary: str(parsed.summary, 800), assumptions: list(parsed.assumptions), costUsd: r.total_cost_usd })
+        if (!parsed?.leads?.length) return done({ added: 0 })
+        const added = addLeads(parsed, state)
+        save()
+        notify()
+        done({ added, summary: str(parsed.summary, 800), assumptions: list(parsed.assumptions) })
       })
     })
 
-  // Batches run one after another in the background; the caller gets the run id at once.
-  // Read through a function: cancelRun changes status from outside this loop.
-  const stopped = () => run.status === 'cancelled'
+  // Batches run `parallel` at a time in the background; the caller gets the run id at once.
   ;(async () => {
-    let error: string | undefined
-    let cost = 0
-    for (let b = 1; b <= batches; b++) {
-      if (stopped()) break
-      const want = Math.min(batchSize, target - run.leadIds.length)
-      if (want <= 0) break
-      run.batch = b
-      run.phase = 0
-      if (batches > 1) push({ kind: 'note', text: `Batch ${b} of ${batches}: looking for ${want} more companies` })
-      const res = await runBatch(b, want)
-      if (typeof res.costUsd === 'number') cost += res.costUsd
-      if (b === 1 || !run.summary) { run.summary = res.summary || run.summary; run.assumptions = res.assumptions?.length ? res.assumptions : run.assumptions }
-      save()
-      notify()
-      if (res.error) { error = res.error; break }
-      if (res.added === 0 && !stopped()) {
-        if (run.leadIds.length === 0) error = 'Claude finished but returned no leads. Try a broader location or industry.'
-        else run.warning = `Claude found no more new companies after ${run.leadIds.length}. Try a broader location or industry for more.`
-        break
+    const errors: string[] = []
+    const queue = [...batchStates]
+    const worker = async () => {
+      while (queue.length && !stopped() && run.leadIds.length < target) {
+        const state = queue.shift()!
+        state.want = Math.min(state.want, target - run.leadIds.length)
+        if (state.want <= 0) { state.status = 'done'; continue }
+        run.batch = state.n
+        push({ kind: 'note', text: batches > 1 ? `Batch ${state.n} of ${batches} started: ${state.want} companies` : `Looking for ${state.want} companies`, batch: batches > 1 ? state.n : undefined })
+        const res = await runBatch(state)
+        if (!run.summary && res.summary) { run.summary = res.summary; run.assumptions = res.assumptions }
+        if (res.error) {
+          errors.push(res.error)
+          // A sign-in problem or a usage limit will fail every other batch too.
+          if (/^AUTH:/.test(res.error) || LIMIT_ERROR.test(res.error)) { queue.length = 0; for (const c of children.get(run.id) ?? []) killTree(c) }
+        }
+        save()
+        notify()
       }
     }
+    await Promise.all(Array.from({ length: parallel }, worker))
+
+    // Parallel batches can overlap. One top-up round fills the gap if any batch was productive.
+    const short = target - run.leadIds.length
+    const productive = batchStates.some((b) => b.found > 0)
+    if (!stopped() && short > 0 && productive && !errors.some((e) => /^AUTH:/.test(e) || LIMIT_ERROR.test(e))) {
+      const extra: BatchState[] = []
+      for (let left = short, i = 0; left > 0; left -= batchSize, i++) {
+        extra.push({ n: batchStates.length + 1, status: 'waiting', want: Math.min(batchSize, left), found: 0, phase: 0, angle: ANGLES[(batchStates.length + i) % ANGLES.length] })
+        batchStates.push(extra[extra.length - 1])
+      }
+      run.batches = batchStates.length
+      push({ kind: 'note', text: `Some companies overlapped. Looking for ${short} more.` })
+      queue.push(...extra)
+      await Promise.all(Array.from({ length: Math.min(parallel, extra.length) }, worker))
+    }
+
     running.delete(run.id)
-    run.costUsd = cost || undefined
+    children.delete(run.id)
     run.finishedAt = Date.now()
     if (!stopped()) {
-      if (error && run.leadIds.length === 0) { run.status = 'failed'; run.error = error }
-      else {
+      const firstError = errors[0]
+      if (run.leadIds.length === 0) {
+        run.status = 'failed'
+        run.error = firstError ?? 'Claude finished but returned no leads. Try a broader location or industry.'
+      } else {
         run.status = 'done'
         run.phase = PHASES.length
-        if (error) run.warning = `Stopped after ${run.leadIds.length} leads: ${error.replace(/^AUTH:\s*/, '')}`
-        if (run.leadIds.length < target && !run.warning) run.warning = `Found ${run.leadIds.length} of the ${target} leads asked for.`
+        if (firstError) run.warning = `Stopped after ${run.leadIds.length} leads: ${firstError.replace(/^AUTH:\s*/, '')}`
+        else if (run.leadIds.length < target) run.warning = `Found ${run.leadIds.length} of the ${target} leads asked for. Try a broader location or industry for more.`
       }
     }
     save(true)

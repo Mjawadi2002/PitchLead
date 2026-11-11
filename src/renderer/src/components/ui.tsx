@@ -196,3 +196,23 @@ export function ShowMore({ shown, total, step, onMore, noun }: { shown: number; 
     </button>
   )
 }
+
+export const fmtTokens = (n: number) =>
+  n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n)
+
+/** Share of the current 5-hour window against the busiest window in the last 30 days. */
+export function usagePercent(u: { current: { tokens: number } | null; peakTokens: number } | null): number | null {
+  if (!u) return null
+  if (!u.current) return 0
+  if (!u.peakTokens) return null
+  return Math.min(100, Math.round((u.current.tokens / u.peakTokens) * 100))
+}
+
+export function resetsIn(end: number): string {
+  const m = Math.max(0, Math.round((end - Date.now()) / 60000))
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`
+}
+
+export function Meter({ value, tone }: { value: number; tone?: 'warn' | 'neg' | '' }) {
+  return <span className={`meter ${tone ?? ''}`} aria-hidden><i style={{ width: `${Math.max(2, value)}%` }} /></span>
+}

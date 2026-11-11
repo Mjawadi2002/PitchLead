@@ -18,8 +18,11 @@
 You describe your product, or point LeadPitch at its folder. Claude searches the web, reads
 company pages and reviews, and looks for signs of need: job posts, new openings, complaints
 in reviews, funding. Each company comes back with a fit score, the reason for that score, who
-to contact, how to approach them and two opening lines. You can ask for up to 100 leads in one
-run.
+to contact, how to approach them and two opening lines, plus the published contact details:
+email, phone, contact page, website and LinkedIn. You can ask for up to 100 leads in one run;
+big runs split into batches that run in parallel, and a small panel in the corner shows progress
+while you work elsewhere in the app. The title bar and Settings show how much of your Claude usage
+window you have used.
 
 It runs the [Lead Research Assistant](https://github.com/ComposioHQ/awesome-claude-skills/tree/master/lead-research-assistant)
 skill from ComposioHQ's awesome-claude-skills (Apache 2.0) and adds a pipeline, outreach

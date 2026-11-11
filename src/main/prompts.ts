@@ -31,6 +31,7 @@ ${PHASES.map((p, i) => `PHASE ${i + 1}: ${p}`).join('\n')}
 - "website" must be a URL you actually saw. "linkedin" is a company or person LinkedIn URL you actually saw, otherwise an empty string.
 - "signal" is one concrete, recent sign of need you found (a job post, an opening, a review pattern, funding, a launch). Keep it under 14 words.
 - Score fit from 1 to 10 using the skill's factors. Be strict: 8 to 10 only with a clear, recent signal.
+- Find public contact details for every lead: a business email, a phone number, a contact page and, when public, the name of the person in the decision-maker role. Look on the company website (contact, about, team, imprint, legal pages), Google Business or Maps listings, directories and LinkedIn. Only include details you actually saw published. Never guess an email from a name pattern. Leave a field empty when you found nothing.
 - Write in plain, direct English. No emoji. No marketing filler.
 
 ## Output contract
@@ -50,6 +51,10 @@ When you finish, use the Write tool to create the file leads.json in the current
       "scoreReason": "One sentence on why this score",
       "decisionMaker": "Role or title to contact",
       "linkedin": "",
+      "email": "Published business email, or empty",
+      "phone": "Published phone with country code, or empty",
+      "contactName": "Name of the decision maker if published, or empty",
+      "contactUrl": "Contact page URL, or empty",
       "signal": "One recent sign of need",
       "why": ["Two or three specific reasons"],
       "valueProp": "How the product solves their specific problem, one or two sentences",
@@ -62,9 +67,10 @@ When you finish, use the Write tool to create the file leads.json in the current
 Sort leads by score, highest first. After writing the file, reply with the summary only.`
 }
 
-export function researchUserPrompt(input: ResearchInput, exclude: string[]): string {
+export function researchUserPrompt(input: ResearchInput, exclude: string[], angle?: string): string {
   const lines = [
     `Find ${input.count} qualified leads for this product.`,
+    ...(angle ? [`Other researchers are covering other angles at the same time. Search mainly through this angle so your companies differ from theirs: ${angle}.`] : []),
     '',
     `Product: ${input.product.trim() || '(see the product folder)'}`
   ]
@@ -126,4 +132,19 @@ Never invent offers, prices, free trials, discounts, customers or results that a
 ${previous ? `\nThe current draft is below. Write a clearly different version.${instruction ? ` Change it like this: ${instruction}.` : ''}\n---\n${previous}\n---` : ''}
 
 Reply with only a JSON object: {"subject": "...", "body": "..."}. For LinkedIn, subject is an empty string.`
+}
+
+export function contactPrompt(lead: { name: string; website: string; location: string; decisionMaker: string }): string {
+  return `Find public contact details for this company.
+
+Company: ${lead.name}
+Website: ${lead.website || "unknown"}
+Location: ${lead.location || "unknown"}
+Role to reach: ${lead.decisionMaker || "owner or manager"}
+
+Search the web. Check the company website (contact, about, team, imprint, legal pages), Google Business or Maps listings, directories and LinkedIn.
+Only report details you actually saw published. Never guess an email from a name pattern. Use an empty string for anything you did not find.
+
+Reply with only a JSON object:
+{"email": "", "phone": "", "contactName": "", "contactUrl": "", "linkedin": "", "website": ""}`
 }

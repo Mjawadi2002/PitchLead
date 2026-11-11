@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ClaudeStatus, Lead, Snapshot } from '@shared/types'
+import type { ClaudeStatus, Lead, Snapshot, UsageReport } from '@shared/types'
 import { Ctx, spring, type AppCtx, type LeadFilter, type ToastOpts, type View } from './state'
 import { TitleBar } from './components/TitleBar'
 import { Sidebar } from './components/Sidebar'
 import { Palette } from './components/Palette'
 import { LeadDrawer } from './components/LeadDrawer'
 import { Onboarding } from './components/Onboarding'
+import { ResearchDock } from './components/ResearchDock'
 import { Today } from './views/Today'
 import { Research } from './views/Research'
 import { Leads } from './views/Leads'
@@ -45,6 +46,18 @@ export function App() {
     })
     return window.lp.data.onChange(setData)
   }, [])
+
+  // Claude usage from local session logs, refreshed every minute and when runs end.
+  const [usage, setUsage] = useState<UsageReport | null>(null)
+  const refreshUsage = useCallback(() => { window.lp.usage.get().then(setUsage).catch(() => {}) }, [])
+  const runsKey = data ? data.runs.map((r) => r.status).join() : ''
+  useEffect(() => {
+    refreshUsage()
+    const t = setInterval(refreshUsage, 60_000)
+    window.addEventListener('focus', refreshUsage)
+    return () => { clearInterval(t); window.removeEventListener('focus', refreshUsage) }
+  }, [refreshUsage])
+  useEffect(() => { refreshUsage() }, [runsKey, refreshUsage])
 
   const refreshClaude = useCallback(async () => {
     setClaude(await window.lp.claude.status())
@@ -136,9 +149,11 @@ export function App() {
         removeLeads,
         showOnboarding: () => setOnboarding(true),
         sidebarCollapsed,
-        toggleSidebar
+        toggleSidebar,
+        usage,
+        refreshUsage
       },
-    [data, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads, sidebarCollapsed, toggleSidebar]
+    [data, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads, sidebarCollapsed, toggleSidebar, usage, refreshUsage]
   )
 
   if (!ctx || !data) return <div className="app" />
@@ -174,6 +189,7 @@ export function App() {
           <AnimatePresence>{lead && drawerViews.includes(view) && <LeadDrawer key="drawer" lead={lead} />}</AnimatePresence>
         </div>
 
+        <ResearchDock />
         <AnimatePresence>{palette && <Palette key="palette" onClose={() => setPalette(false)} />}</AnimatePresence>
         <AnimatePresence>{onboarding && <Onboarding key="onb" onClose={() => setOnboarding(false)} />}</AnimatePresence>
         <AnimatePresence>

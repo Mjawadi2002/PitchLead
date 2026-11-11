@@ -3,8 +3,9 @@ import { randomUUID } from 'crypto'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Draft, Lead, ResearchInput, Settings } from '@shared/types'
-import { ask, claudeStatus, extractJson, openSignIn, AUTH_ERROR } from './claude'
-import { draftPrompt } from './prompts'
+import { ask, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
+import { contactPrompt, draftPrompt } from './prompts'
+import { noteLimit, usageReport } from './usage'
 import { cancelAll, cancelRun, startRun } from './research'
 import { db, flushNow, loadStore, save } from './store'
 
@@ -76,7 +77,7 @@ function registerIpc(): void {
     const now = Date.now()
     const lead: Lead = {
       id: randomUUID(), runId: '', name: 'New company', website: '', industry: '', size: '', location: '',
-      score: 5, scoreReason: 'Added by hand', decisionMaker: '', linkedin: '', signal: '', why: [], valueProp: '',
+      score: 5, scoreReason: 'Added by hand', decisionMaker: '', linkedin: '', email: '', phone: '', contactName: '', contactUrl: '', signal: '', why: [], valueProp: '',
       strategy: '', starters: [], stage: 'researched', notes: '', starred: false, createdAt: now, updatedAt: now,
       stageChangedAt: now, ...partial
     }
@@ -136,9 +137,52 @@ function registerIpc(): void {
       return draft
     } catch (e) {
       const msg = (e as Error).message
+      if (LIMIT_ERROR.test(msg)) noteLimit(msg)
       throw new Error(AUTH_ERROR.test(msg) ? `AUTH: ${msg}` : msg)
     }
   })
+
+  // Contact details for leads that have none: one web lookup per company, three at a time.
+  ipcMain.handle('lead:findContact', async (_e, ids: string[]) => {
+    const d = db.get()
+    const queue = d.leads.filter((l) => ids.includes(l.id))
+    let found = 0
+    let failed = ''
+    const clean = (v: unknown, max = 300) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+    const worker = async () => {
+      while (queue.length) {
+        const lead = queue.shift()!
+        try {
+          const text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: contactPrompt(lead), model: 'sonnet', tools: ['WebSearch', 'WebFetch'], timeoutMs: 240000 })
+          const j = extractJson<Record<string, string>>(text) ?? {}
+          const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(j.email)) ? clean(j.email) : ''
+          const phone = /\d{5,}/.test(clean(j.phone).replace(/\D/g, '')) ? clean(j.phone, 40) : ''
+          const patch: Partial<Lead> = {
+            email: lead.email || email,
+            phone: lead.phone || phone,
+            contactName: lead.contactName || clean(j.contactName, 120),
+            contactUrl: lead.contactUrl || (/^https?:\/\//.test(clean(j.contactUrl)) ? clean(j.contactUrl) : ''),
+            linkedin: lead.linkedin || (/linkedin\.com\//i.test(clean(j.linkedin)) ? clean(j.linkedin) : ''),
+            website: lead.website || (/^https?:\/\//.test(clean(j.website)) ? clean(j.website) : ''),
+            updatedAt: Date.now()
+          }
+          if (patch.email || patch.phone || patch.contactUrl) found++
+          Object.assign(lead, patch)
+          save()
+          notify()
+        } catch (e) {
+          const msg = (e as Error).message
+          if (LIMIT_ERROR.test(msg)) noteLimit(msg)
+          failed = AUTH_ERROR.test(msg) ? `AUTH: ${msg}` : msg
+          if (AUTH_ERROR.test(msg) || LIMIT_ERROR.test(msg)) queue.length = 0
+        }
+      }
+    }
+    await Promise.all([worker(), worker(), worker()])
+    return { found, failed }
+  })
+
+  ipcMain.handle('usage:get', () => usageReport())
 
   // Research
   ipcMain.handle('run:start', (_e, input: ResearchInput) => startRun(input, notify).then((id) => { notify(); return id }))
@@ -202,7 +246,7 @@ function registerIpc(): void {
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (r.canceled || !r.filePath) return null
-    const cols: (keyof Lead)[] = ['name', 'website', 'industry', 'size', 'location', 'score', 'scoreReason', 'decisionMaker', 'linkedin', 'signal', 'why', 'valueProp', 'strategy', 'starters', 'stage', 'notes']
+    const cols: (keyof Lead)[] = ['name', 'website', 'industry', 'size', 'location', 'score', 'scoreReason', 'decisionMaker', 'contactName', 'email', 'phone', 'contactUrl', 'linkedin', 'signal', 'why', 'valueProp', 'strategy', 'starters', 'stage', 'notes']
     const cell = (v: unknown) => {
       const s = Array.isArray(v) ? v.join(' | ') : String(v ?? '')
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -212,7 +256,7 @@ function registerIpc(): void {
     return r.filePath
   })
   ipcMain.handle('shell:open', (_e, url: string) => {
-    if (/^https?:\/\//.test(url)) return shell.openExternal(url)
+    if (/^(https?:\/\/|mailto:|tel:)/.test(url)) return shell.openExternal(url)
   })
   ipcMain.handle('shell:reveal', (_e, path: string) => shell.showItemInFolder(path))
 }

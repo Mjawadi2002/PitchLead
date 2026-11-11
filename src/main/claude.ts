@@ -113,6 +113,7 @@ export async function openSignIn(settings: Settings): Promise<void> {
 }
 
 export const AUTH_ERROR = /authenticat|oauth|log ?in|401|invalid api key|credit balance/i
+export const LIMIT_ERROR = /usage limit|rate limit|limit reached|limit will reset|resets? at|429|overloaded/i
 
 /** Run a one-shot prompt with no tools and return the text result. */
 export async function ask(opts: {
@@ -121,6 +122,8 @@ export async function ask(opts: {
   prompt: string
   model?: string
   timeoutMs?: number
+  /** Built-in tools to allow, for example WebSearch and WebFetch. None by default. */
+  tools?: string[]
 }): Promise<string> {
   const path = await resolveClaude(opts.settings)
   if (!path) throw new Error('Claude Code is not installed.')
@@ -128,7 +131,7 @@ export async function ask(opts: {
   mkdirSync(cwd, { recursive: true })
   const child = spawnClaude(
     path,
-    ['-p', '--output-format', 'json', '--model', opts.model ?? opts.settings.model, '--tools', '', '--no-session-persistence'],
+    ['-p', '--output-format', 'json', '--model', opts.model ?? opts.settings.model, '--tools', (opts.tools ?? []).join(','), ...(opts.tools?.length ? ['--allowedTools', opts.tools.join(','), '--permission-mode', 'dontAsk'] : []), '--no-session-persistence'],
     { cwd, apiKey: opts.settings.mode === 'apikey' ? opts.apiKey : null }
   )
   return new Promise((resolve, reject) => {

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowSquareOut, Copy, Globe, LinkedinLogo, PaperPlaneTilt, Star, Trash, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, Copy, EnvelopeSimple, Globe, IdentificationCard, LinkedinLogo, MagnifyingGlass, PaperPlaneTilt, Phone, Star, Trash, User, X } from '@phosphor-icons/react'
 import { STAGES, type Lead, type Stage } from '@shared/types'
 import { spring, useApp } from '../state'
 import { hostOf, initials } from './ui'
@@ -43,6 +43,26 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
       toast('Could not copy')
     }
   }
+  const [finding, setFinding] = useState(false)
+  const findContact = async () => {
+    setFinding(true)
+    try {
+      const r = await window.lp.leads.findContact([lead.id])
+      if (r.failed) toast(r.failed.startsWith('AUTH:') ? 'Sign in to Claude again in Settings' : 'Could not search right now. Try again later.')
+      else toast(r.found ? 'Contact details added' : 'No public contact details found')
+    } finally {
+      setFinding(false)
+    }
+  }
+  const contacts = [
+    lead.email && { icon: <EnvelopeSimple size={15} />, label: 'Email', value: lead.email, href: `mailto:${lead.email}` },
+    lead.phone && { icon: <Phone size={15} />, label: 'Phone', value: lead.phone, href: `tel:${lead.phone.replace(/[^\d+]/g, '')}` },
+    lead.contactName && { icon: <User size={15} />, label: 'Contact', value: `${lead.contactName}${lead.decisionMaker ? `, ${lead.decisionMaker}` : ''}` },
+    lead.contactUrl && { icon: <IdentificationCard size={15} />, label: 'Contact page', value: hostOf(lead.contactUrl), href: lead.contactUrl, copy: lead.contactUrl },
+    lead.website && { icon: <Globe size={15} />, label: 'Website', value: hostOf(lead.website), href: lead.website, copy: lead.website },
+    lead.linkedin && { icon: <LinkedinLogo size={15} />, label: 'LinkedIn', value: lead.linkedin.replace(/^https?:\/\/(www\.)?/, ''), href: lead.linkedin, copy: lead.linkedin }
+  ].filter(Boolean) as { icon: JSX.Element; label: string; value: string; href?: string; copy?: string }[]
+  const hasDirect = !!(lead.email || lead.phone || lead.contactUrl)
   const run = data.runs.find((r) => r.id === lead.runId)
   const verdict = lead.score >= 8 ? 'High priority. Contact this week.' : lead.score >= 5 ? 'Medium priority. Contact after the top leads.' : 'Low priority.'
 
@@ -112,6 +132,24 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
           <div><span>Decision maker</span><b>{lead.decisionMaker || 'Unknown'}</b></div>
         </div>
 
+        <div className="d-sec">
+          <h3>Contact</h3>
+          <div className="contacts">
+            {contacts.map((c) => (
+              <div className="contact-row" key={c.label}>
+                <span className="c-ic">{c.icon}</span>
+                <div className="c-text"><span>{c.label}</span>{c.href ? <button className="c-val link-like" onClick={() => window.lp.shell.open(c.href!)}>{c.value}</button> : <b className="c-val">{c.value}</b>}</div>
+                <button className="icon-btn sm" aria-label={`Copy ${c.label.toLowerCase()}`} onClick={() => copy(c.copy ?? c.value)}><Copy size={14} /></button>
+              </div>
+            ))}
+            {!hasDirect && (
+              <div className="contact-empty">
+                <span>{contacts.length ? 'No email or phone found yet.' : 'No contact details yet.'}</span>
+                <button className="btn btn-ghost" disabled={finding} onClick={findContact}><MagnifyingGlass size={13} />{finding ? 'Searching the web' : 'Find contact details'}</button>
+              </div>
+            )}
+          </div>
+        </div>
         {lead.signal && <div className="d-sec"><h3>Signal</h3><p>{lead.signal}</p></div>}
         {lead.why.length > 0 && <div className="d-sec"><h3>Why they fit</h3><ul>{lead.why.map((w, i) => <li key={i}>{w}</li>)}</ul></div>}
         {lead.valueProp && <div className="d-sec"><h3>Value for them</h3><p>{lead.valueProp}</p></div>}

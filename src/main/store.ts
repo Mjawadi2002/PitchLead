@@ -36,6 +36,13 @@ export function loadStore(): void {
         titlebar: { ...DEFAULT_SETTINGS.titlebar, ...(raw.settings?.titlebar ?? {}) }
       }
     }
+    // Leads saved before contact details existed get empty fields.
+    for (const l of data.leads) {
+      l.email ??= ''
+      l.phone ??= ''
+      l.contactName ??= ''
+      l.contactUrl ??= ''
+    }
     // A run cannot still be running after a restart.
     for (const r of data.runs) {
       if (r.status === 'running') {

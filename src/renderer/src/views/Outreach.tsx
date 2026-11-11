@@ -125,7 +125,12 @@ export function Outreach() {
               <button className="btn btn-primary" disabled={!body || busy} onClick={copy}><Copy size={14} />Copy</button>
             </div>
           </div>
-          <div className="to"><span>To</span><b>{shortRole(lead.decisionMaker) || 'Decision maker'}, {lead.name}</b></div>
+          <div className="to">
+            <span>To</span>
+            <b>{lead.contactName || shortRole(lead.decisionMaker) || 'Decision maker'}, {lead.name}</b>
+            {channel === 'email' && lead.email && <button className="link-like to-addr" onClick={() => window.lp.shell.open(`mailto:${lead.email}`)}>{lead.email}</button>}
+            {channel === 'email' && !lead.email && <span className="muted">No email found yet. Open the lead and use Find contact details.</span>}
+          </div>
 
           {busy ? (
             <div className="msg-skel" aria-label="Writing">

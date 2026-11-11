@@ -22,6 +22,11 @@ export interface Lead {
   scoreReason: string
   decisionMaker: string
   linkedin: string
+  /** Public contact details found during research. Empty when none were found. */
+  email: string
+  phone: string
+  contactName: string
+  contactUrl: string
   signal: string
   why: string[]
   valueProp: string
@@ -67,6 +72,16 @@ export interface RunEvent {
   kind: RunEventKind
   text: string
   phase?: number
+  batch?: number
+}
+
+export interface BatchState {
+  n: number
+  status: 'waiting' | 'running' | 'done' | 'failed'
+  want: number
+  found: number
+  phase: number
+  angle: string
 }
 
 export type RunStatus = 'running' | 'done' | 'failed' | 'cancelled'
@@ -84,6 +99,8 @@ export interface Run {
   /** Big runs are split into batches of BATCH_SIZE, one Claude session each. */
   batch?: number
   batches?: number
+  batchStates?: BatchState[]
+  parallel?: number
   warning?: string
   summary?: string
   assumptions?: string[]
@@ -113,6 +130,26 @@ export interface Settings {
   defaultLang: Lang
   lastInput: ResearchInput | null
   onboarded: boolean
+  /** How many Claude sessions a big run uses at once. */
+  parallel: number
+}
+
+export interface UsageWindow {
+  start: number
+  end: number
+  tokens: number
+  messages: number
+  leadpitchTokens: number
+}
+
+export interface UsageReport {
+  current: UsageWindow | null
+  /** Busiest 5-hour window in the last 30 days, used as the 100% mark. */
+  peakTokens: number
+  weekTokens: number
+  weekMessages: number
+  limitHit?: { at: number; message: string }
+  checkedAt: number
 }
 
 export interface Snapshot {
@@ -178,5 +215,6 @@ export const DEFAULT_SETTINGS: Settings = {
   senderName: '',
   defaultLang: 'en',
   lastInput: null,
-  onboarded: false
+  onboarded: false,
+  parallel: 3
 }

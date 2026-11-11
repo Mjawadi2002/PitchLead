@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { ClaudeStatus, Lead, Snapshot } from '@shared/types'
+import type { ClaudeStatus, Lead, Snapshot, UsageReport } from '@shared/types'
 
 export type View = 'today' | 'research' | 'leads' | 'pipeline' | 'outreach' | 'settings'
 export type LeadFilter = 'all' | 'high' | 'mid' | 'starred' | 'new'
@@ -28,6 +28,8 @@ export interface AppCtx {
   /** Effective state: the saved preference, or folded automatically on narrow windows. */
   sidebarCollapsed: boolean
   toggleSidebar: () => void
+  usage: UsageReport | null
+  refreshUsage: () => void
 }
 
 export const Ctx = createContext<AppCtx>(null as unknown as AppCtx)

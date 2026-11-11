@@ -3,14 +3,14 @@ import { useState } from 'react'
 import { Kanban } from '@phosphor-icons/react'
 import { STAGES, type Stage } from '@shared/types'
 import { spring, useApp } from '../state'
-import { Empty, Score, ShowMore, timeAgo } from '../components/ui'
+import { Empty, Score, timeAgo } from '../components/ui'
 
 export function Pipeline() {
   const { data, openLead, go, toast, leadId } = useApp()
   const [over, setOver] = useState<Stage | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [limits, setLimits] = useState<Record<string, number>>({})
-  const STEP = 20
+  const STEP = 5
 
   if (!data.leads.length) {
     return (
@@ -76,7 +76,13 @@ export function Pipeline() {
                     </div>
                   </motion.div>
                 ))}
-                <ShowMore shown={limits[s.id] ?? STEP} total={items.length} step={STEP} noun="cards" onMore={() => setLimits((m) => ({ ...m, [s.id]: (m[s.id] ?? STEP) + STEP }))} />
+                {items.length > STEP && (
+                  <div className="col-pager">
+                    <span className="muted num">{Math.min(limits[s.id] ?? STEP, items.length)} of {items.length}</span>
+                    {(limits[s.id] ?? STEP) > STEP && <button className="col-pager-btn" onClick={() => setLimits((m) => ({ ...m, [s.id]: STEP }))}>Show less</button>}
+                    {(limits[s.id] ?? STEP) < items.length && <button className="col-pager-btn strong" onClick={() => setLimits((m) => ({ ...m, [s.id]: (m[s.id] ?? STEP) + STEP }))}>Show {Math.min(STEP, items.length - (limits[s.id] ?? STEP))} more</button>}
+                  </div>
+                )}
                 {items.length === 0 && <div className="col-empty">Drop here</div>}
               </div>
             )

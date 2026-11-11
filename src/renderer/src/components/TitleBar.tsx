@@ -4,12 +4,19 @@ import { CopySimple, MagnifyingGlass, Minus, Plus, SidebarSimple, SlidersHorizon
 import type { TitlebarPrefs } from '@shared/types'
 import { PHASES } from '@shared/types'
 import { spring, useApp } from '../state'
-import { Logo, Seg, Switch, mod } from './ui'
+import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from './ui'
 
 const CRUMB = { today: 'Today', research: 'Research', leads: 'Leads', pipeline: 'Pipeline', outreach: 'Outreach', settings: 'Settings' }
 
 export function TitleBar() {
-  const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar } = useApp()
+  const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar, usage } = useApp()
+  const pct = usagePercent(usage)
+  const usageTone = usage?.limitHit ? 'neg' : pct !== null && pct >= 85 ? 'warn' : ''
+  const usageTitle = usage?.limitHit
+    ? `Claude reported a usage limit: ${usage.limitHit.message}`
+    : usage?.current
+      ? `This 5-hour window: ${fmtTokens(usage.current.tokens)} tokens${pct !== null ? `, ${pct}% of your busiest window` : ''}. Resets in ${resetsIn(usage.current.end)}.`
+      : 'No Claude use in the current 5-hour window'
   const tb = data.settings.titlebar
   const [pop, setPop] = useState(false)
   const [max, setMax] = useState(false)
@@ -90,9 +97,10 @@ export function TitleBar() {
           </button>
         )}
         {tb.claude && (
-          <button className={`chip claude-chip ${claudeChip.tone}`} onClick={() => go('settings')} title="Claude connection">
+          <button className={`chip claude-chip ${claudeChip.tone || (usageTone === 'neg' ? 'warn' : '')}`} onClick={() => go('settings')} title={`${claudeChip.text}. ${usageTitle}`}>
             <TerminalWindow size={14} />
             {claudeChip.text}
+            {usage && claude?.loggedIn && (usage.limitHit ? <span className="usage-pct">Limit reached</span> : pct !== null && <><Meter value={pct} tone={usageTone as 'warn' | ''} /><span className="usage-pct num">{pct}%</span></>)}
           </button>
         )}
         {tb.newBtn && (

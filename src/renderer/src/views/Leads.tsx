@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
-import { CaretDown, CaretUp, Export, MagnifyingGlass, Plus, Star, Trash, UsersThree, X } from '@phosphor-icons/react'
+import { CaretDown, CaretUp, EnvelopeSimple, Export, Globe, IdentificationCard, MagnifyingGlass, Phone, Plus, Star, Trash, UsersThree, X } from '@phosphor-icons/react'
 import { STAGES, type Lead, type Stage } from '@shared/types'
 import { spring, useApp, type LeadFilter } from '../state'
 import { Checkbox, Empty, PAGE_SIZES, Pager, Score, StagePill, initials } from '../components/ui'
@@ -20,6 +20,7 @@ export function Leads() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 })
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [finding, setFinding] = useState(false)
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -146,10 +147,11 @@ export function Leads() {
         <table>
           <colgroup>
             <col style={{ width: 44 }} /><col style={{ width: 36 }} /><col />
-            {!compact && <col style={{ width: '15%' }} />}
+            {!compact && <col style={{ width: '13%' }} />}
             <col style={{ width: 70 }} />
-            {!compact && <col style={{ width: '16%' }} />}
-            {!compact && <col style={{ width: '24%' }} />}
+            {!compact && <col style={{ width: '14%' }} />}
+            {!compact && <col style={{ width: 116 }} />}
+            {!compact && <col style={{ width: '18%' }} />}
             <col style={{ width: 118 }} />
           </colgroup>
           <thead>
@@ -164,6 +166,7 @@ export function Leads() {
               {!compact && <th>Location</th>}
               <th>{head('score', 'Fit')}</th>
               {!compact && <th>Decision maker</th>}
+              {!compact && <th>Contact</th>}
               {!compact && <th>Signal</th>}
               <th>{head('stage', 'Stage')}</th>
             </tr>
@@ -191,6 +194,16 @@ export function Leads() {
               <option value="" disabled>Move to stage</option>
               {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
+            <button className="btn btn-plain" disabled={finding} onClick={async () => {
+              const ids = selected.filter((l) => !l.email && !l.phone).map((l) => l.id)
+              if (!ids.length) { toast('These leads already have contact details'); return }
+              setFinding(true)
+              toast(`Searching contact details for ${ids.length} ${ids.length === 1 ? 'company' : 'companies'}`)
+              try {
+                const r = await window.lp.leads.findContact(ids)
+                toast(r.failed ? `Found details for ${r.found}. ${r.failed.startsWith('AUTH:') ? 'Sign in to Claude again.' : 'Some searches failed.'}` : `Found details for ${r.found} of ${ids.length}`)
+              } finally { setFinding(false) }
+            }}><MagnifyingGlass size={14} />{finding ? 'Searching' : 'Find contacts'}</button>
             <button className="btn btn-plain" onClick={() => exportCsv(selected.map((l) => l.id))}><Export size={14} />Export</button>
             <button className="btn btn-danger" onClick={() => { removeLeads(selected); setChecked(new Set()) }}><Trash size={14} />Delete</button>
             <button className="icon-btn" aria-label="Clear selection" onClick={() => setChecked(new Set())}><X size={14} /></button>
@@ -221,6 +234,16 @@ function Row({ lead: l, i, compact, active, checked, onCheck, onOpen }: { lead: 
       {!compact && <td title={l.location}>{l.location}</td>}
       <td><Score value={l.score} /></td>
       {!compact && <td title={l.decisionMaker}>{l.decisionMaker}</td>}
+      {!compact && (
+        <td title={[l.email, l.phone, l.contactUrl || l.website].filter(Boolean).join(' · ') || 'No contact details yet'}>
+          <span className="ct-icons">
+            <EnvelopeSimple size={15} className={l.email ? 'on' : ''} />
+            <Phone size={15} className={l.phone ? 'on' : ''} />
+            <IdentificationCard size={15} className={l.contactUrl ? 'on' : ''} />
+            <Globe size={15} className={l.website ? 'on' : ''} />
+          </span>
+        </td>
+      )}
       {!compact && <td className="muted" title={l.signal}>{l.signal}</td>}
       <td><StagePill stage={l.stage} /></td>
     </motion.tr>

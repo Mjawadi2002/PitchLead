@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { ArrowsClockwise, Key, TerminalWindow } from '@phosphor-icons/react'
 import type { Settings, TitlebarPrefs } from '@shared/types'
 import { useApp } from '../state'
-import { Logo, Seg, Switch, mod } from '../components/ui'
+import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from '../components/ui'
 
 export function SettingsView() {
-  const { data, claude, refreshClaude, toast, showOnboarding } = useApp()
+  const { data, claude, refreshClaude, toast, showOnboarding, usage, refreshUsage } = useApp()
+  const pct = usagePercent(usage)
   const s = data.settings
   const set = (patch: Partial<Settings>) => window.lp.settings.update(patch)
   const setTb = (patch: Partial<TitlebarPrefs>) => set({ titlebar: { ...s.titlebar, ...patch } })
@@ -115,9 +116,38 @@ export function SettingsView() {
               <Seg label="Model" value={s.model} onChange={(v) => set({ model: v })} options={[{ value: 'opus', label: 'Opus' }, { value: 'sonnet', label: 'Sonnet' }]} />
             </div>
             <div className="set-row">
+              <div><b>Parallel sessions</b><span>Runs larger than 15 leads split into batches. This many run at the same time: faster, but uses your limit faster.</span></div>
+              <Seg label="Parallel sessions" value={String(s.parallel ?? 3)} onChange={(v) => set({ parallel: Number(v) })} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))} />
+            </div>
+            <div className="set-row">
               <div><b>Web research</b><span>Lets Claude search the web and read company sites. Without it, results rely on what Claude already knows.</span></div>
               <Switch label="Web research" checked={s.webResearch} onChange={(v) => set({ webResearch: v })} />
             </div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="section-title">Claude usage<button className="more" onClick={refreshUsage}>Refresh</button></h2>
+          <div className="card">
+            {usage?.limitHit && (
+              <div style={{ padding: '14px 18px 0' }}>
+                <div className="alert"><div className="grow"><b>Claude reported a usage limit</b>{usage.limitHit.message}</div></div>
+              </div>
+            )}
+            <div className="usage-now">
+              <div className="row">
+                <b>Current 5-hour window</b>
+                <span className="muted">{usage?.current ? `resets in ${resetsIn(usage.current.end)}, at ${new Date(usage.current.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'not started, it begins with your next Claude message'}</span>
+                {pct !== null && <span className="num" style={{ marginLeft: 'auto', fontWeight: 600 }}>{pct}%</span>}
+              </div>
+              <Meter value={pct ?? 0} tone={usage?.limitHit ? 'neg' : (pct ?? 0) >= 85 ? 'warn' : ''} />
+            </div>
+            <div className="usage-grid">
+              <div><span>This window</span><b className="num">{usage?.current ? fmtTokens(usage.current.tokens) : '0'}</b><span>tokens, {usage?.current?.messages ?? 0} replies</span></div>
+              <div><span>LeadPitch share</span><b className="num">{usage?.current ? fmtTokens(usage.current.leadpitchTokens) : '0'}</b><span>tokens from research and drafts</span></div>
+              <div><span>Last 7 days</span><b className="num">{fmtTokens(usage?.weekTokens ?? 0)}</b><span>tokens, {usage?.weekMessages ?? 0} replies</span></div>
+            </div>
+            <p className="usage-note">Counted from Claude Code on this computer, including your own Claude Code sessions. Anthropic does not publish exact plan limits, so 100% is your busiest 5-hour window in the last 30 days. When Claude reports a real limit, it shows here and in the title bar.</p>
           </div>
         </section>
 

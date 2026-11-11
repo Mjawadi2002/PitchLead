@@ -1,4 +1,4 @@
-/* Leadpitch. Graphite neutrals, one cobalt accent.
+/* LeadPitch. Graphite neutrals, one cobalt accent.
    Radius rule: cards 10, controls 7, menus 12, status chips full pill. */
 :root {
   --win: #fbfbfd; --side: rgba(241, 241, 245, 0.9); --bar: rgba(247, 247, 250, 0.86);
@@ -470,3 +470,4 @@ tbody tr[data-checked='true'] { background: var(--accent-soft); }
 .col .show-more { border: 0; border-radius: 8px; text-align: center; padding: 8px; }
 .run-progress { height: 3px; background: var(--hover); }
 .run-progress i { display: block; height: 100%; background: var(--accent-fill); transition: width 0.6s var(--ease); }
+.brand-p { color: var(--accent); }

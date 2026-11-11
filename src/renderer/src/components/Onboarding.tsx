@@ -25,11 +25,11 @@ export function Onboarding({ onClose }: { onClose: () => void }) {
 
   return (
     <motion.div className="scrim" style={{ alignItems: 'center', paddingTop: 0 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <motion.div className="modal" role="dialog" aria-label="Welcome to Leadpitch" initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }} transition={spring}>
+      <motion.div className="modal" role="dialog" aria-label="Welcome to LeadPitch" initial={{ opacity: 0, scale: 0.96, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98 }} transition={spring}>
         <Logo size={48} />
         <div>
-          <h2>Welcome to Leadpitch</h2>
-          <p style={{ marginTop: 6 }}>Leadpitch uses Claude Code on this computer to research companies, score them and write how to reach them. Your Claude subscription covers it, so no API key is needed.</p>
+          <h2>Welcome to LeadPitch</h2>
+          <p style={{ marginTop: 6 }}>LeadPitch uses Claude Code on this computer to research companies, score them and write how to reach them. Your Claude subscription covers it, so no API key is needed.</p>
         </div>
 
         <div className="check-row">

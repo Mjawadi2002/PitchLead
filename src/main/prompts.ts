@@ -18,9 +18,9 @@ export function researchSystemPrompt(): string {
 
 ---
 
-# Running inside Leadpitch
+# Running inside LeadPitch
 
-You are running headless inside Leadpitch, a desktop app. Nobody can answer questions during the run, so do not ask any. Where something is unclear, make a sensible assumption and list it under "assumptions".
+You are running headless inside LeadPitch, a desktop app. Nobody can answer questions during the run, so do not ask any. Where something is unclear, make a sensible assumption and list it under "assumptions".
 
 ## Progress markers
 Work through these phases in order. When you start a phase, print one line on its own, exactly in this form:

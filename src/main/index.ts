@@ -23,7 +23,7 @@ function createWindow(): void {
     show: false,
     frame: false,
     backgroundColor: bg(),
-    title: 'Leadpitch',
+    title: 'LeadPitch',
     icon: join(app.getAppPath(), 'build', 'icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

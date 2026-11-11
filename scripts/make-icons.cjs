@@ -1,4 +1,4 @@
-// Renders the Leadpitch mark to build/icon.png (1024) and build/icon.ico (16-256).
+// Renders the LeadPitch mark to build/icon.png (1024) and build/icon.ico (16-256).
 // Run with: npx electron scripts/make-icons.cjs
 const { app, BrowserWindow, nativeImage } = require('electron')
 const fs = require('fs')
@@ -9,9 +9,11 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" 
 <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
 <rect width="64" height="64" rx="15" fill="url(#f)"/><rect width="64" height="64" rx="15" fill="url(#s)"/>
 <rect x=".5" y=".5" width="63" height="63" rx="14.5" fill="none" stroke="#fff" stroke-opacity=".16"/>
-<path d="M14 48 L24 48" stroke="#fff" stroke-opacity=".45" stroke-width="4" stroke-linecap="round"/>
-<path d="M17 47 C 22 30, 32 20, 45.5 19.5" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-<circle cx="47" cy="19.5" r="6.5" fill="#fff"/></svg>`
+<circle cx="28" cy="28" r="14.5" fill="none" stroke="#fff" stroke-width="5"/>
+<path d="M38.8 38.8 L48.5 48.5" stroke="#fff" stroke-width="6.5" stroke-linecap="round"/>
+<rect x="20.5" y="29" width="4" height="6" rx="1.5" fill="#fff" fill-opacity=".55"/>
+<rect x="26" y="25.5" width="4" height="9.5" rx="1.5" fill="#fff" fill-opacity=".75"/>
+<rect x="31.5" y="21" width="4" height="14" rx="1.5" fill="#fff"/></svg>`
 
 function ico(pngs) {
   const header = Buffer.alloc(6)

@@ -1,6 +1,6 @@
 {
   "name": "leadpitch",
-  "productName": "Leadpitch",
+  "productName": "LeadPitch",
   "version": "0.1.0",
   "description": "Find, score and win leads with Claude.",
   "author": "Mouhanned Jawadi",
@@ -11,7 +11,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "icons": "electron scripts/make-icons.cjs",
+    "icons": "electron scripts/make-icons.cjs && electron scripts/make-lockup.cjs",
     "package": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
@@ -35,7 +35,7 @@
   },
   "build": {
     "appId": "com.leadpitch.app",
-    "productName": "Leadpitch",
+    "productName": "LeadPitch",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -64,7 +64,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Leadpitch"
+      "shortcutName": "LeadPitch"
     },
     "mac": {
       "icon": "build/icon.png",

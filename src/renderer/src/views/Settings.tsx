@@ -191,7 +191,7 @@ export function SettingsView() {
         <div className="card about">
           <Logo size={56} />
           <div style={{ flex: 1 }}>
-            <b style={{ fontWeight: 600, fontSize: 15 }}>Leadpitch 0.1</b>
+            <b style={{ fontWeight: 600, fontSize: 15 }}>Lead<span className="brand-p">Pitch</span> 0.1</b>
             <p>Built on the Lead Research Assistant skill from ComposioHQ's awesome-claude-skills (Apache 2.0). Your leads are stored only on this computer.</p>
           </div>
           <button className="btn btn-ghost" onClick={showOnboarding}>Setup guide</button>

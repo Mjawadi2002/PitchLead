@@ -40,7 +40,7 @@ export function loadStore(): void {
     for (const r of data.runs) {
       if (r.status === 'running') {
         r.status = 'failed'
-        r.error = 'Leadpitch was closed while this run was in progress.'
+        r.error = 'LeadPitch was closed while this run was in progress.'
       }
     }
   } catch {

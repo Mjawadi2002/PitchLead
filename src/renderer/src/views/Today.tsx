@@ -47,7 +47,7 @@ export function Today() {
           </div>
           <ol className="how">
             {[
-              ['Describe your product', 'Or point Leadpitch at its folder and Claude reads it.'],
+              ['Describe your product', 'Or point LeadPitch at its folder and Claude reads it.'],
               ['Claude researches', 'Web searches, company pages and buying signals, live as it works.'],
               ['Review scored leads', 'Why each one fits, who to contact and what to say first.'],
               ['Work the pipeline', 'Draft messages, move companies forward, export to CSV.']

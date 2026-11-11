@@ -58,4 +58,4 @@ const api = {
 }
 
 contextBridge.exposeInMainWorld('lp', api)
-export type LeadpitchApi = typeof api
+export type LeadPitchApi = typeof api

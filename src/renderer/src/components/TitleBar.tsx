@@ -64,7 +64,7 @@ export function TitleBar() {
         >
           <SidebarSimple size={17} />
         </button>
-        <div className="brand"><Logo size={20} /><span>Leadpitch</span></div>
+        <div className="brand"><Logo size={20} /><span>Lead<span className="brand-p">Pitch</span></span></div>
         <span className="crumb">{CRUMB[view]}</span>
       </div>
 

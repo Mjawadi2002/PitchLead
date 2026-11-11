@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="build/icon.png" width="96" height="96" alt="Leadpitch app icon">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/lockup-dark.png">
+    <img src="docs/lockup-light.png" width="330" alt="LeadPitch">
+  </picture>
 </p>
-
-<h1 align="center">Leadpitch</h1>
 
 <p align="center">
   A desktop app that finds companies likely to buy what you sell, scores each one from 1 to 10,
@@ -14,7 +15,7 @@
 
 ## What it does
 
-You describe your product, or point Leadpitch at its folder. Claude searches the web, reads
+You describe your product, or point LeadPitch at its folder. Claude searches the web, reads
 company pages and reviews, and looks for signs of need: job posts, new openings, complaints
 in reviews, funding. Each company comes back with a fit score, the reason for that score, who
 to contact, how to approach them and two opening lines. You can ask for up to 100 leads in one
@@ -56,7 +57,7 @@ The leads in these screenshots are real public cafés in Sousse, Tunisia, found 
 
 ## How it connects to Claude
 
-Leadpitch does not call the Anthropic API itself. It starts your installed Claude Code
+LeadPitch does not call the Anthropic API itself. It starts your installed Claude Code
 (`claude -p --output-format stream-json`), so research uses whichever account Claude Code is
 signed in with:
 
@@ -65,7 +66,7 @@ signed in with:
 - **API key**: paste a key in Settings. It is encrypted with the system keychain
   (Electron `safeStorage`) and passed to Claude Code only for that run.
 
-Subscription login is meant for your own use. If you give Leadpitch to other people, they
+Subscription login is meant for your own use. If you give LeadPitch to other people, they
 should use their own Claude Code login or API key. A product that offers Claude subscription
 login to its users needs Anthropic's approval.
 
@@ -80,7 +81,7 @@ npm run dev        # development, hot reload
 npm run build      # production build into out/
 npx electron .     # run the production build
 npm run package    # Windows installer into dist/
-npm run icons      # regenerate build/icon.png and build/icon.ico from the logo
+npm run icons      # regenerate the app icons and the README logo from the mark
 ```
 
 ## What is where
@@ -90,13 +91,13 @@ npm run icons      # regenerate build/icon.png and build/icon.ico from the logo
 | `src/main/index.ts` | Frameless window, IPC, CSV export |
 | `src/main/research.ts` | Runs research in batches, parses the stream into steps and activity, reads `leads.json` |
 | `src/main/claude.ts` | Finds Claude Code, sign-in status, one-shot prompts |
-| `src/main/prompts.ts` | Skill text plus the Leadpitch output contract, draft prompts |
+| `src/main/prompts.ts` | Skill text plus the LeadPitch output contract, draft prompts |
 | `src/main/store.ts` | Local JSON store in the app data folder, atomic writes |
 | `src/renderer/src` | React interface: title bar, sidebar, views, command palette |
 | `resources/skill/SKILL.md` | The bundled skill |
 
-Data stays on your computer, in `%APPDATA%/Leadpitch/leadpitch.json`. Each run keeps its
-prompt and `leads.json` in `%APPDATA%/Leadpitch/runs/<id>/`.
+Data stays on your computer, in `%APPDATA%/LeadPitch/leadpitch.json`. Each run keeps its
+prompt and `leads.json` in `%APPDATA%/LeadPitch/runs/<id>/`.
 
 ## Keyboard
 

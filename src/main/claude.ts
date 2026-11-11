@@ -74,7 +74,7 @@ export function killTree(child: ChildProcess): void {
 export async function claudeStatus(settings: Settings, hasKey: boolean): Promise<ClaudeStatus> {
   const path = await resolveClaude(settings)
   const now = Date.now()
-  if (!path) return { found: false, checkedAt: now, error: 'Claude Code is not installed, or Leadpitch cannot find it.' }
+  if (!path) return { found: false, checkedAt: now, error: 'Claude Code is not installed, or LeadPitch cannot find it.' }
   let version = ''
   try { version = (await run(path, ['--version'])).trim().split(/\s/)[0] } catch (e) {
     return { found: false, path, checkedAt: now, error: (e as Error).message }

@@ -21,9 +21,11 @@ export function Logo({ size = 20, title }: { size?: number; title?: string }) {
       <rect width="64" height="64" rx="15" fill={`url(#f${id})`} />
       <rect width="64" height="64" rx="15" fill={`url(#s${id})`} />
       <rect x=".5" y=".5" width="63" height="63" rx="14.5" fill="none" stroke="#fff" strokeOpacity=".16" />
-      <path d="M14 48 L24 48" stroke="#fff" strokeOpacity=".45" strokeWidth="4" strokeLinecap="round" />
-      <path d="M17 47 C 22 30, 32 20, 45.5 19.5" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
-      <circle cx="47" cy="19.5" r="6.5" fill="#fff" />
+      <circle cx="28" cy="28" r="14.5" fill="none" stroke="#fff" strokeWidth="5" />
+      <path d="M38.8 38.8 L48.5 48.5" stroke="#fff" strokeWidth="6.5" strokeLinecap="round" />
+      <rect x="20.5" y="29" width="4" height="6" rx="1.5" fill="#fff" fillOpacity=".55" />
+      <rect x="26" y="25.5" width="4" height="9.5" rx="1.5" fill="#fff" fillOpacity=".75" />
+      <rect x="31.5" y="21" width="4" height="14" rx="1.5" fill="#fff" />
     </svg>
   )
 }

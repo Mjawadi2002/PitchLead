@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CaretDown, CaretUp, Export, MagnifyingGlass, Plus, Star, Trash, UsersThree, X } from '@phosphor-icons/react'
 import { STAGES, type Lead, type Stage } from '@shared/types'
 import { spring, useApp, type LeadFilter } from '../state'
-import { Checkbox, Empty, Score, StagePill, initials } from '../components/ui'
+import { Checkbox, Empty, PAGE_SIZES, Pager, Score, StagePill, initials } from '../components/ui'
 
 type SortKey = 'score' | 'name' | 'createdAt' | 'stage'
 
@@ -42,6 +42,30 @@ export function Leads() {
 
   useEffect(() => setChecked(new Set()), [filter])
 
+  // Pagination: page size is remembered on this computer; the page resets when the list changes shape.
+  const [size, setSizeState] = useState<number>(() => {
+    try { const v = Number(localStorage.getItem('lp.pageSize')); return PAGE_SIZES.includes(v) ? v : 25 } catch { return 25 }
+  })
+  const setSize = (s: number) => {
+    setSizeState(s)
+    setPage(0)
+    try { localStorage.setItem('lp.pageSize', String(s)) } catch { /* ignore */ }
+  }
+  const [page, setPage] = useState(0)
+  const pages = Math.max(1, Math.ceil(rows.length / size))
+  useEffect(() => setPage(0), [filter, q, sort])
+  useEffect(() => { if (page > pages - 1) setPage(pages - 1) }, [page, pages])
+  // Keep the open lead's page in view (J/K can move across pages).
+  useEffect(() => {
+    const idx = rows.findIndex((r) => r.id === leadId)
+    if (idx >= 0) setPage(Math.floor(idx / size))
+  }, [leadId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pageRows = rows.slice(page * size, (page + 1) * size)
+  const goPage = (p: number) => {
+    setPage(p)
+    document.getElementById('content')?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // Keyboard: J/K or arrows move, Enter opens, X checks, S stars
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,7 +83,7 @@ export function Leads() {
 
   const compact = !!leadId
   const toggle = (id: string) => setChecked((c) => { const n = new Set(c); n.has(id) ? n.delete(id) : n.add(id); return n })
-  const allChecked = rows.length > 0 && rows.every((r) => checked.has(r.id))
+  const allChecked = pageRows.length > 0 && pageRows.every((r) => checked.has(r.id))
   const selected = data.leads.filter((l) => checked.has(l.id))
   const head = (key: SortKey, label: string) => (
     <button onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === 'name' || key === 'stage' ? 1 : -1 }))}>
@@ -130,7 +154,11 @@ export function Leads() {
           </colgroup>
           <thead>
             <tr>
-              <th><Checkbox label="Select all" checked={allChecked} onChange={(v) => setChecked(v ? new Set(rows.map((r) => r.id)) : new Set())} /></th>
+              <th><Checkbox label="Select this page" checked={allChecked} onChange={(v) => setChecked((c) => {
+                const n = new Set(c)
+                pageRows.forEach((r) => (v ? n.add(r.id) : n.delete(r.id)))
+                return n
+              })} /></th>
               <th />
               <th>{head('name', 'Company')}</th>
               {!compact && <th>Location</th>}
@@ -141,12 +169,13 @@ export function Leads() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((l, i) => (
+            {pageRows.map((l, i) => (
               <Row key={l.id} lead={l} i={i} compact={compact} active={l.id === leadId} checked={checked.has(l.id)} onCheck={() => toggle(l.id)} onOpen={() => openLead(l.id === leadId ? null : l.id)} />
             ))}
           </tbody>
         </table>
         {rows.length === 0 && <Empty icon={<MagnifyingGlass size={20} />} title="Nothing matches">Try a different filter or clear the search.</Empty>}
+        {rows.length > PAGE_SIZES[0] && <Pager page={page} size={size} total={rows.length} onPage={goPage} onSize={setSize} />}
       </div>
 
       <AnimatePresence>

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { useId, type ReactNode } from 'react'
-import { Check } from '@phosphor-icons/react'
+import { CaretLeft, CaretRight, Check } from '@phosphor-icons/react'
 import { STAGES, type Stage } from '@shared/types'
 import { spring } from '../state'
 
@@ -138,3 +138,59 @@ export const hostOf = (url: string) => {
 
 export const isMac = () => window.lp.platform === 'darwin'
 export const mod = () => (isMac() ? 'Cmd' : 'Ctrl')
+
+/** Page numbers with gaps: 1 … 4 5 6 … 12 */
+function pageList(page: number, pages: number): (number | 'gap')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i)
+  const set = new Set([0, pages - 1, page - 1, page, page + 1].filter((p) => p >= 0 && p < pages))
+  if (page <= 2) [1, 2, 3].forEach((p) => set.add(p))
+  if (page >= pages - 3) [pages - 4, pages - 3, pages - 2].forEach((p) => set.add(p))
+  const sorted = [...set].sort((a, b) => a - b)
+  const out: (number | 'gap')[] = []
+  sorted.forEach((p, i) => {
+    if (i && p - sorted[i - 1] > 1) out.push('gap')
+    out.push(p)
+  })
+  return out
+}
+
+export const PAGE_SIZES = [25, 50, 100]
+
+export function Pager({
+  page, size, total, onPage, onSize, noun = 'leads'
+}: { page: number; size: number; total: number; onPage: (p: number) => void; onSize?: (s: number) => void; noun?: string }) {
+  const pages = Math.max(1, Math.ceil(total / size))
+  const from = total ? page * size + 1 : 0
+  const to = Math.min(total, (page + 1) * size)
+  return (
+    <nav className="pager" aria-label="Pages">
+      <span className="muted num">{from}–{to} of {total} {noun}</span>
+      {onSize && (
+        <label className="pager-size">
+          <span className="muted">Per page</span>
+          <select className="input" value={size} onChange={(e) => onSize(Number(e.target.value))} aria-label="Rows per page">
+            {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
+      )}
+      <div className="pager-pages">
+        <button className="icon-btn sm" aria-label="Previous page" disabled={page === 0} onClick={() => onPage(page - 1)}><CaretLeft size={13} weight="bold" /></button>
+        {pageList(page, pages).map((p, i) =>
+          p === 'gap' ? <span key={`g${i}`} className="pager-gap">…</span> : (
+            <button key={p} className="pager-num num" aria-current={p === page ? 'page' : undefined} onClick={() => onPage(p)}>{p + 1}</button>
+          )
+        )}
+        <button className="icon-btn sm" aria-label="Next page" disabled={page >= pages - 1} onClick={() => onPage(page + 1)}><CaretRight size={13} weight="bold" /></button>
+      </div>
+    </nav>
+  )
+}
+
+export function ShowMore({ shown, total, step, onMore, noun }: { shown: number; total: number; step: number; onMore: () => void; noun: string }) {
+  if (shown >= total) return null
+  return (
+    <button className="show-more" onClick={onMore}>
+      Show {Math.min(step, total - shown)} more <span className="muted num">· {total - shown} {noun} hidden</span>
+    </button>
+  )
+}

@@ -455,3 +455,16 @@ tbody tr[data-checked='true'] { background: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.12s !important; }
 }
+
+/* ---------- Pagination ---------- */
+.pager { display: flex; align-items: center; gap: 16px; padding: 10px 12px 10px 16px; border-top: 1px solid var(--line); font-size: 12px; flex-wrap: wrap; }
+.pager-size { display: flex; align-items: center; gap: 8px; }
+.pager-size select { width: 70px; min-height: 28px; padding: 3px 24px 3px 8px; }
+.pager-pages { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.pager-num { min-width: 28px; height: 28px; padding: 0 6px; border-radius: 7px; color: var(--fg-2); font-weight: 500; transition: background 0.15s, color 0.15s; }
+.pager-num:hover { background: var(--hover); color: var(--fg); }
+.pager-num[aria-current='page'] { background: var(--fg); color: var(--win); }
+.pager-gap { width: 22px; text-align: center; color: var(--fg-3); }
+.show-more { width: 100%; padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; color: var(--accent); font-weight: 500; font-size: 12.5px; transition: background 0.15s; }
+.show-more:hover { background: var(--hover); }
+.col .show-more { border: 0; border-radius: 8px; text-align: center; padding: 8px; }

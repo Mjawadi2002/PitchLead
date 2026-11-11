@@ -3,12 +3,14 @@ import { useState } from 'react'
 import { Kanban } from '@phosphor-icons/react'
 import { STAGES, type Stage } from '@shared/types'
 import { spring, useApp } from '../state'
-import { Empty, Score, timeAgo } from '../components/ui'
+import { Empty, Score, ShowMore, timeAgo } from '../components/ui'
 
 export function Pipeline() {
   const { data, openLead, go, toast, leadId } = useApp()
   const [over, setOver] = useState<Stage | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [limits, setLimits] = useState<Record<string, number>>({})
+  const STEP = 20
 
   if (!data.leads.length) {
     return (
@@ -56,7 +58,7 @@ export function Pipeline() {
                 onDrop={(e) => { e.preventDefault(); drop(s.id, e.dataTransfer.getData('text/plain')) }}
               >
                 <div className="col-head">{s.label}<span className="num">{items.length}</span></div>
-                {items.map((l) => (
+                {items.slice(0, limits[s.id] ?? STEP).map((l) => (
                   <motion.div key={l.id} layout layoutId={l.id} transition={spring}>
                     <div
                       className={`kcard ${dragId === l.id ? 'dragging' : ''}`}
@@ -74,6 +76,7 @@ export function Pipeline() {
                     </div>
                   </motion.div>
                 ))}
+                <ShowMore shown={limits[s.id] ?? STEP} total={items.length} step={STEP} noun="cards" onMore={() => setLimits((m) => ({ ...m, [s.id]: (m[s.id] ?? STEP) + STEP }))} />
                 {items.length === 0 && <div className="col-empty">Drop here</div>}
               </div>
             )

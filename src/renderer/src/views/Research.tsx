@@ -5,7 +5,7 @@ import {
 } from '@phosphor-icons/react'
 import { DEFAULT_INPUT, PHASES, type ResearchInput, type Run, type RunEvent } from '@shared/types'
 import { spring, useApp } from '../state'
-import { mod, timeAgo } from '../components/ui'
+import { ShowMore, mod, timeAgo } from '../components/ui'
 
 const KIND_ICON: Record<RunEvent['kind'], JSX.Element> = {
   phase: <ArrowRight size={13} />,
@@ -37,6 +37,7 @@ export function Research() {
   const [more, setMore] = useState(!!(input.pains || input.tech || input.extra))
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [historyShown, setHistoryShown] = useState(8)
   const running = data.runs.find((r) => r.status === 'running')
   const [selectedId, setSelectedId] = useState<string | null>(running?.id ?? data.runs[0]?.id ?? null)
   const selected = data.runs.find((r) => r.id === selectedId) ?? running ?? data.runs[0]
@@ -141,7 +142,7 @@ export function Research() {
         <section className="history">
           <h2 className="section-title">History</h2>
           <div className="card">
-            {data.runs.map((r) => (
+            {data.runs.slice(0, historyShown).map((r) => (
               <div className="list-row" key={r.id} style={{ cursor: 'default', background: r.id === selected?.id ? 'var(--hover)' : undefined }} onClick={() => setSelectedId(r.id)}>
                 <span className={`dot ${r.status === 'running' ? 'live' : r.status === 'done' ? '' : r.status === 'failed' ? 'warn' : 'idle'}`} />
                 <div className="co"><div><b>{r.title}</b><span>{timeAgo(r.createdAt)} · {r.status === 'done' ? `${r.leadIds.length} leads` : r.status === 'running' ? 'Running' : r.status === 'cancelled' ? 'Stopped' : 'Failed'}</span></div></div>
@@ -149,6 +150,7 @@ export function Research() {
                 <button className="icon-btn" aria-label="Delete run" disabled={r.status === 'running'} onClick={(e) => { e.stopPropagation(); window.lp.research.remove(r.id) }}><Trash size={15} /></button>
               </div>
             ))}
+            <ShowMore shown={historyShown} total={data.runs.length} step={8} noun="runs" onMore={() => setHistoryShown((n) => n + 8)} />
           </div>
         </section>
       )}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowsClockwise, Check, Copy, PaperPlaneTilt, PencilSimpleLine, WarningCircle } from '@phosphor-icons/react'
 import type { Channel, Draft, Lang } from '@shared/types'
 import { useApp } from '../state'
-import { Empty, Score, Seg, stageLabel } from '../components/ui'
+import { Empty, Score, Seg, ShowMore, stageLabel } from '../components/ui'
 
 const shortRole = (s: string) => s.split(/[;(]/)[0].trim()
 
@@ -13,6 +13,7 @@ export function Outreach() {
   const [channel, setChannel] = useState<Channel>('email')
   const [lang, setLang] = useState<Lang>(data.settings.defaultLang)
   const [busy, setBusy] = useState(false)
+  const [shown, setShown] = useState(30)
   const [error, setError] = useState<string | null>(null)
 
   const list = useMemo(
@@ -102,7 +103,7 @@ export function Outreach() {
       </div>
       <div className="outreach">
         <div className="card drafts" role="list">
-          {list.map((l) => {
+          {list.slice(0, Math.max(shown, list.findIndex((x) => x.id === outreachLeadId) + 1)).map((l) => {
             const has = data.drafts.some((d) => d.leadId === l.id)
             return (
               <button key={l.id} className="draft-item" aria-current={l.id === lead.id} onClick={() => setOutreachLeadId(l.id)}>
@@ -112,6 +113,7 @@ export function Outreach() {
               </button>
             )
           })}
+          <ShowMore shown={shown} total={list.length} step={30} noun="leads" onMore={() => setShown((n) => n + 30)} />
         </div>
 
         <div className="card editor">

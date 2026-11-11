@@ -141,22 +141,16 @@ export function App() {
         <div className="body">
           <Sidebar />
           <main className="content" id="content">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={view}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.12 } }}
-                transition={spring}
-              >
+            {/* Enter-only transition. Waiting on an exit animation let the Pipeline's
+                layout cards hold the old view open, which left the next view blank. */}
+            <motion.div key={view} initial={{ opacity: 0.35, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}>
                 {view === 'today' && <Today />}
                 {view === 'research' && <Research />}
                 {view === 'leads' && <Leads />}
                 {view === 'pipeline' && <Pipeline />}
                 {view === 'outreach' && <Outreach />}
                 {view === 'settings' && <SettingsView />}
-              </motion.div>
-            </AnimatePresence>
+            </motion.div>
           </main>
           <AnimatePresence>{lead && drawerViews.includes(view) && <LeadDrawer key="drawer" lead={lead} />}</AnimatePresence>
         </div>

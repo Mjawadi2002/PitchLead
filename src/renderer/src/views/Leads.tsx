@@ -175,9 +175,9 @@ export function Leads() {
 function Row({ lead: l, i, compact, active, checked, onCheck, onOpen }: { lead: Lead; i: number; compact: boolean; active: boolean; checked: boolean; onCheck: () => void; onOpen: () => void }) {
   return (
     <motion.tr
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ ...spring, delay: Math.min(i, 12) * 0.02 }}
+      initial={{ opacity: 0.4 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.14, delay: Math.min(i, 6) * 0.012 }}
       data-active={active}
       data-checked={checked}
       onClick={onOpen}

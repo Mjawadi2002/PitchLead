@@ -468,3 +468,5 @@ tbody tr[data-checked='true'] { background: var(--accent-soft); }
 .show-more { width: 100%; padding: 10px 14px; border-top: 1px solid var(--line); text-align: left; color: var(--accent); font-weight: 500; font-size: 12.5px; transition: background 0.15s; }
 .show-more:hover { background: var(--hover); }
 .col .show-more { border: 0; border-radius: 8px; text-align: center; padding: 8px; }
+.run-progress { height: 3px; background: var(--hover); }
+.run-progress i { display: block; height: 100%; background: var(--accent-fill); transition: width 0.6s var(--ease); }

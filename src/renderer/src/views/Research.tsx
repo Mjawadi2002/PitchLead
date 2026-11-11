@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, CaretRight, Check, FileText, FolderOpen, Globe, MagnifyingGlass, NotePencil, Play, Stop, Trash, WarningCircle, X
 } from '@phosphor-icons/react'
-import { DEFAULT_INPUT, PHASES, type ResearchInput, type Run, type RunEvent } from '@shared/types'
+import { BATCH_SIZE, DEFAULT_INPUT, MAX_LEADS, PHASES, type ResearchInput, type Run, type RunEvent } from '@shared/types'
 import { spring, useApp } from '../state'
 import { ShowMore, mod, timeAgo } from '../components/ui'
 
@@ -15,6 +15,16 @@ const KIND_ICON: Record<RunEvent['kind'], JSX.Element> = {
   write: <NotePencil size={13} />,
   note: <CaretRight size={13} />,
   error: <WarningCircle size={13} />
+}
+
+/** Rough wall-clock estimate from real runs: about 4 min for 5 leads on Opus. */
+function estimate(count: number, model: string) {
+  const perBatch = (n: number) => 2.5 + n * 0.45
+  let mins = 0
+  for (let left = count; left > 0; left -= BATCH_SIZE) mins += perBatch(Math.min(BATCH_SIZE, left))
+  if (model === 'sonnet') mins *= 0.6
+  const m = Math.round(mins / 5) * 5 || Math.ceil(mins)
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ''}`.trim() : `${m} min`
 }
 
 function elapsed(from: number, to = Date.now()) {
@@ -118,7 +128,12 @@ export function Research() {
           </AnimatePresence>
           <div className="field">
             <label htmlFor="r-count">Number of leads</label>
-            <div className="range-row"><input id="r-count" type="range" min={5} max={30} value={input.count} onChange={(e) => set({ count: Number(e.target.value) })} /><b className="num">{input.count}</b></div>
+            <div className="range-row"><input id="r-count" type="range" min={5} max={MAX_LEADS} step={5} value={input.count} onChange={(e) => set({ count: Number(e.target.value) })} /><b className="num">{input.count}</b></div>
+            <span className="help">
+              {input.count > BATCH_SIZE
+                ? `Runs as ${Math.ceil(input.count / BATCH_SIZE)} batches of up to ${BATCH_SIZE}, one after another. Expect about ${estimate(input.count, data.settings.model)}. Leads are saved after each batch, and large runs use more of your plan limit.`
+                : `Expect about ${estimate(input.count, data.settings.model)}.`}
+            </span>
           </div>
           {(error || blocked) && (
             <div className={`alert ${error ? '' : 'warn'}`}>
@@ -166,7 +181,11 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
   const feed = useMemo(() => (run?.events ?? []).filter((e) => e.kind !== 'phase'), [run?.events])
   const phaseTimes = useMemo(() => {
     const m = new Map<number, number>()
-    for (const e of run?.events ?? []) if (e.kind === 'phase' && e.phase) m.set(e.phase, e.t)
+    // Only the current batch: each batch goes through the steps again.
+    const ev = run?.events ?? []
+    let start = 0
+    ev.forEach((e, i) => { if (e.kind === 'note' && /^Batch d+ of d+/.test(e.text)) start = i })
+    for (const e of ev.slice(start)) if (e.kind === 'phase' && e.phase) m.set(e.phase, e.t)
     return m
   }, [run?.events])
 
@@ -190,14 +209,20 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
   }
 
   const auth = run.error?.startsWith('AUTH:')
+  const multi = (run.batches ?? 1) > 1
   const state = isRunning ? 'Running' : run.status === 'done' ? 'Finished' : run.status === 'cancelled' ? 'Stopped' : 'Failed'
 
   return (
     <div className="card run">
       <div className="run-head">
-        <div style={{ minWidth: 0 }}><b>{run.title}</b><div className="muted" style={{ fontSize: 12 }}>{timeAgo(run.createdAt)} · {elapsed(run.createdAt, run.finishedAt)}</div></div>
+        <div style={{ minWidth: 0 }}><b>{run.title}</b><div className="muted" style={{ fontSize: 12 }}>{timeAgo(run.createdAt)} · {elapsed(run.createdAt, run.finishedAt)} · <span className="num">{run.leadIds.length} of {run.input.count} leads</span>{multi && isRunning ? ` · batch ${run.batch} of ${run.batches}` : ''}</div></div>
         <span className="chip"><span className={`dot ${isRunning ? 'live' : run.status === 'done' ? '' : run.status === 'failed' ? 'warn' : 'idle'}`} />{state}</span>
       </div>
+      {multi && (
+        <div className="run-progress" aria-label="Leads found" title={`${run.leadIds.length} of ${run.input.count} leads`}>
+          <i style={{ width: `${Math.min(100, (run.leadIds.length / Math.max(1, run.input.count)) * 100)}%` }} />
+        </div>
+      )}
       <ol className="phases">
         {PHASES.map((p, i) => {
           const n = i + 1
@@ -223,6 +248,11 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
           </div>
         ))}
       </div>
+      {run.warning && run.status === 'done' && (
+        <div style={{ padding: '12px 16px 0' }}>
+          <div className="alert warn"><WarningCircle size={16} weight="fill" style={{ flex: 'none', marginTop: 1 }} /><div className="grow">{run.warning.replace(/^AUTH:s*/, '')}</div></div>
+        </div>
+      )}
       {run.status === 'done' && (
         <div className="result-box" style={{ borderTop: '1px solid var(--line)' }}>
           {run.summary && <p>{run.summary}</p>}
@@ -242,9 +272,13 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
         </div>
       )}
       <div className="run-foot">
-        <span className="grow">{isRunning ? 'You can keep working. The run continues in the background.' : run.status === 'done' ? `${run.leadIds.length} new leads added to Researched.` : 'Uses your Claude account through Claude Code.'}</span>
+        <span className="grow">{isRunning
+          ? multi ? `${run.leadIds.length} leads saved so far. You can keep working while the next batches run.` : 'You can keep working. The run continues in the background.'
+          : run.status === 'done' ? `${run.leadIds.length} new leads added to Researched.`
+          : run.status === 'cancelled' && run.leadIds.length ? `Stopped. The ${run.leadIds.length} leads found before stopping were kept.`
+          : 'Uses your Claude account through Claude Code.'}</span>
         {isRunning && <button className="btn btn-ghost" onClick={() => window.lp.research.cancel(run.id)}><Stop size={13} weight="fill" />Stop</button>}
-        {run.status === 'done' && run.leadIds.length > 0 && <button className="btn btn-primary" onClick={onViewLeads}>View leads<ArrowRight size={13} /></button>}
+        {(run.status === 'done' || run.status === 'cancelled') && run.leadIds.length > 0 && <button className="btn btn-primary" onClick={onViewLeads}>View leads<ArrowRight size={13} /></button>}
         {run.status === 'failed' && !auth && <button className="btn btn-ghost" onClick={() => go('settings')}>Check connection</button>}
       </div>
     </div>

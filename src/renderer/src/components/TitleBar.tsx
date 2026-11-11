@@ -83,7 +83,7 @@ export function TitleBar() {
           <button className="chip" onClick={() => go('research')} title="Research status">
             <span className={`dot ${running ? 'live' : lastDone ? '' : 'idle'}`} />
             {running
-              ? `Researching · ${Math.max(1, running.phase)} of ${PHASES.length}`
+              ? (running.batches ?? 1) > 1 ? `Researching · ${running.leadIds.length} of ${running.input.count} leads` : `Researching · ${Math.max(1, running.phase)} of ${PHASES.length}`
               : lastDone
                 ? `Last run · ${lastDone.leadIds.length} leads`
                 : 'No runs yet'}

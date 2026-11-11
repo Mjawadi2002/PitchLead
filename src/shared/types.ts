@@ -81,6 +81,10 @@ export interface Run {
   leadIds: string[]
   events: RunEvent[]
   phase: number
+  /** Big runs are split into batches of BATCH_SIZE, one Claude session each. */
+  batch?: number
+  batches?: number
+  warning?: string
   summary?: string
   assumptions?: string[]
   error?: string
@@ -130,6 +134,9 @@ export interface ClaudeStatus {
   error?: string
   checkedAt: number
 }
+
+export const MAX_LEADS = 100
+export const BATCH_SIZE = 15
 
 export const PHASES = [
   'Understand the product',

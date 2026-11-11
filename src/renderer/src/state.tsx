@@ -25,6 +25,9 @@ export interface AppCtx {
   openPalette: () => void
   removeLeads: (leads: Lead[]) => void
   showOnboarding: () => void
+  /** Effective state: the saved preference, or folded automatically on narrow windows. */
+  sidebarCollapsed: boolean
+  toggleSidebar: () => void
 }
 
 export const Ctx = createContext<AppCtx>(null as unknown as AppCtx)

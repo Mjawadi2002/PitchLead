@@ -9,7 +9,7 @@ import { Logo, Seg, Switch, mod } from './ui'
 const CRUMB = { today: 'Today', research: 'Research', leads: 'Leads', pipeline: 'Pipeline', outreach: 'Outreach', settings: 'Settings' }
 
 export function TitleBar() {
-  const { data, claude, view, go, openPalette } = useApp()
+  const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar } = useApp()
   const tb = data.settings.titlebar
   const [pop, setPop] = useState(false)
   const [max, setMax] = useState(false)
@@ -57,10 +57,10 @@ export function TitleBar() {
         )}
         <button
           className="icon-btn"
-          aria-pressed={data.settings.sidebarCollapsed}
-          aria-label={data.settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-pressed={sidebarCollapsed}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={`Toggle sidebar (${mod()}+\\)`}
-          onClick={() => window.lp.settings.update({ sidebarCollapsed: !data.settings.sidebarCollapsed })}
+          onClick={toggleSidebar}
         >
           <SidebarSimple size={17} />
         </button>
@@ -70,17 +70,17 @@ export function TitleBar() {
 
       <div className="tb-center">
         {tb.search && (
-          <button className="search-trigger" onClick={openPalette}>
+          <button className="search-trigger" onClick={openPalette} aria-label="Search leads and commands">
             <MagnifyingGlass size={15} />
-            <span className="grow">Search leads and commands</span>
-            <span className="kbd">{mod()} K</span>
+            <span className="grow st-text">Search leads and commands</span>
+            <span className="kbd st-text">{mod()} K</span>
           </button>
         )}
       </div>
 
       <div className="tb-right">
         {tb.run && (
-          <button className="chip" onClick={() => go('research')} title="Research status">
+          <button className="chip run-chip" onClick={() => go('research')} title="Research status">
             <span className={`dot ${running ? 'live' : lastDone ? '' : 'idle'}`} />
             {running
               ? (running.batches ?? 1) > 1 ? `Researching · ${running.leadIds.length} of ${running.input.count} leads` : `Researching · ${Math.max(1, running.phase)} of ${PHASES.length}`
@@ -90,7 +90,7 @@ export function TitleBar() {
           </button>
         )}
         {tb.claude && (
-          <button className={`chip ${claudeChip.tone}`} onClick={() => go('settings')} title="Claude connection">
+          <button className={`chip claude-chip ${claudeChip.tone}`} onClick={() => go('settings')} title="Claude connection">
             <TerminalWindow size={14} />
             {claudeChip.text}
           </button>
@@ -98,7 +98,7 @@ export function TitleBar() {
         {tb.newBtn && (
           <button className="btn btn-primary" onClick={() => go('research')} title={`New research (${mod()}+N)`}>
             <Plus size={14} weight="bold" />
-            New research
+            <span className="nb-text">New research</span>
           </button>
         )}
         <button ref={btnRef} className="icon-btn" aria-label="Customize title bar" aria-expanded={pop} aria-pressed={pop} onClick={() => setPop((p) => !p)}>

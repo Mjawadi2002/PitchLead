@@ -43,7 +43,7 @@ export function SettingsView() {
         : { tone: 'warn', text: sub ? 'No key' : 'Signed out' }
 
   return (
-    <div className="view">
+    <div className="view narrow">
       <div className="vh"><div><h1>Settings</h1></div></div>
       <div className="settings">
         <section>

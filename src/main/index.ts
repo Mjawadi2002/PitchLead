@@ -18,8 +18,8 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1320,
     height: 840,
-    minWidth: 940,
-    minHeight: 620,
+    minWidth: 720,
+    minHeight: 540,
     show: false,
     frame: false,
     backgroundColor: bg(),

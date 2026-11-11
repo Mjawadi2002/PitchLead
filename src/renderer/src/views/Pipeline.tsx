@@ -38,8 +38,8 @@ export function Pipeline() {
   }
 
   return (
-    <div className="view wide" style={{ padding: '26px 0 0', marginRight: leadId ? 420 : 0, transition: 'margin .4s var(--ease)' }}>
-      <div className="vh" style={{ padding: '0 32px' }}>
+    <div className={`view wide board-view${leadId ? ' with-drawer' : ''}`}>
+      <div className="vh">
         <div>
           <h1>Pipeline</h1>
           <p>Drag a company to another stage. Click a card to see its details.</p>

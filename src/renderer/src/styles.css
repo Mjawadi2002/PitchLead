@@ -471,3 +471,60 @@ tbody tr[data-checked='true'] { background: var(--accent-soft); }
 .run-progress { height: 3px; background: var(--hover); }
 .run-progress i { display: block; height: 100%; background: var(--accent-fill); transition: width 0.6s var(--ease); }
 .brand-p { color: var(--accent); }
+
+/* ---------- Responsive ----------
+   Views fill the window at any size. Gutters scale with width; the detail drawer
+   scales too and reserves space only when the window is wide enough to keep both. */
+:root { --gutter: clamp(18px, 2.6vw, 48px); --drawer-w: clamp(360px, 30vw, 480px); }
+.view { max-width: none; padding: 26px var(--gutter) 48px; transition: margin-right 0.4s var(--ease); }
+.view.narrow { max-width: 920px; margin-inline: auto; }
+.view.narrow .settings { max-width: none; }
+.view.board-view { padding: 26px 0 0; }
+.view.board-view > .vh { padding: 0 var(--gutter); }
+.board { padding: 0 var(--gutter) 24px; grid-auto-columns: minmax(230px, 1fr); }
+.drawer { width: var(--drawer-w); }
+@media (min-width: 1100px) { .view.with-drawer { margin-right: var(--drawer-w); } }
+.outreach { grid-template-columns: clamp(240px, 24vw, 360px) minmax(0, 1fr); }
+.editor { min-height: min(560px, calc(100vh - 230px)); }
+.drafts { max-height: calc(100vh - 210px); }
+.today-grid { gap: clamp(18px, 2vw, 32px); }
+.research { gap: clamp(18px, 2vw, 32px); }
+@media (min-width: 1700px) {
+  .today-grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .kpi b { font-size: 30px; }
+}
+
+/* Title bar condenses as the window narrows */
+@media (max-width: 1180px) {
+  .search-trigger { width: 30px; padding: 0; justify-content: center; }
+  .search-trigger .st-text { display: none; }
+  .tb-center { justify-content: flex-end; }
+}
+@media (max-width: 960px) {
+  .run-chip { display: none; }
+  .titlebar .btn .nb-text { display: none; }
+  .titlebar .btn { padding: 0 9px; }
+}
+@media (max-width: 820px) {
+  .claude-chip, .crumb { display: none; }
+}
+
+/* Layouts stack on small windows */
+@media (max-width: 1000px) {
+  .outreach { grid-template-columns: minmax(0, 1fr); }
+  .drafts { max-height: 240px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .set-row { grid-template-columns: minmax(0, 1fr); }
+  .set-row .ctl { justify-content: flex-start; flex-wrap: wrap; }
+  .vh .actions { margin-left: 0; }
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .hero-empty { padding: 20px; }
+  .search-box { min-width: 0; flex: 1 1 200px; }
+}
+@media (max-width: 760px) {
+  :root { --drawer-w: 100%; }
+  .drawer { border-left: 0; }
+  .editor-head .actions { margin-left: 0; }
+}

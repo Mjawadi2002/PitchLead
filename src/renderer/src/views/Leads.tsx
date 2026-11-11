@@ -117,7 +117,7 @@ export function Leads() {
   }
 
   return (
-    <div className="view" style={{ maxWidth: leadId ? 'calc(100% - 420px)' : undefined, transition: 'max-width .4s var(--ease)' }}>
+    <div className={`view${leadId ? ' with-drawer' : ''}`}>
       <div className="vh">
         <div>
           <h1>Leads</h1>

@@ -28,6 +28,16 @@ export function App() {
   const [toastState, setToastState] = useState<{ id: number; text: string; opts?: ToastOpts } | null>(null)
   const toastTimer = useRef<number>()
 
+  // Narrow windows fold the sidebar to icons without changing the saved preference.
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 1000)
+  const [peek, setPeek] = useState(false)
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 1000)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => { if (!narrow) setPeek(false) }, [narrow])
+
   useEffect(() => {
     window.lp.data.get().then((s) => {
       setData(s)
@@ -59,6 +69,11 @@ export function App() {
     else if (v !== 'leads' && v !== 'pipeline' && v !== 'today') setLeadId(null)
   }, [])
 
+  const toggleSidebar = useCallback(() => {
+    if (narrow) setPeek((p) => !p)
+    else if (data) window.lp.settings.update({ sidebarCollapsed: !data.settings.sidebarCollapsed })
+  }, [narrow, data])
+
   const removeLeads = useCallback(
     (leads: Lead[]) => {
       if (!leads.length) return
@@ -85,7 +100,7 @@ export function App() {
         setPalette((p) => !p)
       } else if (m && e.key === '\\') {
         e.preventDefault()
-        if (data) window.lp.settings.update({ sidebarCollapsed: !data.settings.sidebarCollapsed })
+        toggleSidebar()
       } else if (m && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         go('research')
@@ -99,8 +114,9 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [data, go])
+  }, [data, go, toggleSidebar])
 
+  const sidebarCollapsed = !!data && (narrow ? !peek : data.settings.sidebarCollapsed)
   const ctx = useMemo<AppCtx | null>(
     () =>
       data && {
@@ -118,9 +134,11 @@ export function App() {
         toast,
         openPalette: () => setPalette(true),
         removeLeads,
-        showOnboarding: () => setOnboarding(true)
+        showOnboarding: () => setOnboarding(true),
+        sidebarCollapsed,
+        toggleSidebar
       },
-    [data, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads]
+    [data, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads, sidebarCollapsed, toggleSidebar]
   )
 
   if (!ctx || !data) return <div className="app" />
@@ -132,7 +150,8 @@ export function App() {
     <Ctx.Provider value={ctx}>
       <div
         className="app"
-        data-collapsed={data.settings.sidebarCollapsed}
+        data-collapsed={sidebarCollapsed}
+        data-narrow={narrow}
         data-density={tb.density}
         data-material={tb.material}
         data-controls={tb.controls}

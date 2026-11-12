@@ -10,9 +10,31 @@ export const STAGES: { id: Stage; label: string }[] = [
   { id: 'lost', label: 'Lost' }
 ]
 
+export interface Project {
+  id: string
+  name: string
+  /** Product or service: changes how Claude describes the offer. */
+  offerType: 'product' | 'service'
+  /** What is sold: what it is, who it is for, the problem it solves. */
+  product: string
+  folder: string
+  industry: string
+  location: string
+  size: string
+  pains: string
+  tech: string
+  /** Index into the project colour list. */
+  color: number
+  createdAt: number
+}
+
+export const PROJECT_COLORS = ['#3557E8', '#1B8049', '#B25E09', '#8E3FD1', '#C1352D', '#0E7C86', '#5B5B64']
+
 export interface Lead {
   id: string
   runId: string
+  /** The project this lead belongs to. */
+  projectId?: string
   name: string
   website: string
   industry: string
@@ -78,6 +100,8 @@ export interface ResearchInput {
   tech: string
   count: number
   extra: string
+  /** Project the run belongs to; its leads go there. */
+  projectId?: string
   /** fast: map data and web lists, read by code, scored by Claude in bulk. deep: Claude researches each company. */
   engine?: 'fast' | 'deep'
   /** Fast engine only: research leads that score 8 or more in depth afterwards. */
@@ -160,6 +184,7 @@ export type RunStatus = 'running' | 'done' | 'failed' | 'cancelled'
 
 export interface Run {
   id: string
+  projectId?: string
   title: string
   createdAt: number
   finishedAt?: number
@@ -207,6 +232,16 @@ export interface Settings {
   /** How many Claude sessions a big run uses at once. */
   parallel: number
   mail: MailSettings
+  /** Guided tour: new on first launch, then active, done or skipped. Replayable from Settings. */
+  tour: TourState
+  /** Project shown across the app, or 'all'. */
+  activeProject: string
+}
+
+export interface TourState {
+  status: 'new' | 'active' | 'done' | 'skipped'
+  step: number
+  startedAt: number
 }
 
 export interface UsageWindow {
@@ -228,6 +263,7 @@ export interface UsageReport {
 }
 
 export interface Snapshot {
+  projects: Project[]
   leads: Lead[]
   runs: Run[]
   drafts: Draft[]
@@ -321,5 +357,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastInput: null,
   onboarded: false,
   parallel: 3,
-  mail: DEFAULT_MAIL
+  mail: DEFAULT_MAIL,
+  tour: { status: 'new', step: 0, startedAt: 0 },
+  activeProject: 'all'
 }

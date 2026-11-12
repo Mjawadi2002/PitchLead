@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { ClaudeStatus, Lead, Snapshot, UsageReport } from '@shared/types'
+import type { ClaudeStatus, Lead, Project, Snapshot, UsageReport } from '@shared/types'
 
 export type View = 'today' | 'research' | 'leads' | 'pipeline' | 'outreach' | 'settings'
 export type LeadFilter = 'all' | 'high' | 'mid' | 'starred' | 'new'
@@ -10,7 +10,12 @@ export interface ToastOpts {
 }
 
 export interface AppCtx {
+  /** Data for the selected project only (or everything under "All projects"). */
   data: Snapshot
+  /** Everything, across projects. */
+  allData: Snapshot
+  project: Project | null
+  editProject: (id: string | 'new') => void
   claude: ClaudeStatus | null
   refreshClaude: () => Promise<void>
   view: View

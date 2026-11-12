@@ -1,5 +1,6 @@
 import { GearSix, House, Kanban, MagnifyingGlass, PaperPlaneTilt, Star, EnvelopeSimple, UsersThree, Target } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
+import { ProjectSwitcher } from './ProjectSwitcher'
 import { useApp, type LeadFilter, type View } from '../state'
 
 function Item({ view, filter, icon, label, count, live }: { view: View; filter?: LeadFilter; icon: ReactNode; label: string; count?: number; live?: boolean }) {
@@ -25,6 +26,7 @@ export function Sidebar() {
 
   return (
     <nav className="sidebar" aria-label="Main">
+      <ProjectSwitcher />
       <Item view="today" icon={<House size={ic} />} label="Today" />
       <Item view="research" icon={<MagnifyingGlass size={ic} />} label="Research" live={running} />
       <Item view="leads" icon={<UsersThree size={ic} />} label="Leads" count={leads.length} />

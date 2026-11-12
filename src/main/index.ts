@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electro
 import { randomUUID } from 'crypto'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-import type { Draft, Lead, ResearchInput, Settings } from '@shared/types'
+import type { Draft, Lead, Project, ResearchInput, Settings } from '@shared/types'
 import { ask, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
 import { contactPrompt, draftPrompt, meetingPrompt, sequencePrompt } from './prompts'
 import { deepen } from './fast'
@@ -81,7 +81,9 @@ function registerIpc(): void {
       id: randomUUID(), runId: '', name: 'New company', website: '', industry: '', size: '', location: '',
       score: 5, scoreReason: 'Added by hand', decisionMaker: '', linkedin: '', email: '', phone: '', contactName: '', contactUrl: '', signal: '', why: [], valueProp: '',
       strategy: '', starters: [], stage: 'researched', notes: '', starred: false, createdAt: now, updatedAt: now,
-      stageChangedAt: now, ...partial
+      stageChangedAt: now,
+      projectId: db.get().settings.activeProject !== 'all' ? db.get().settings.activeProject : db.get().projects[0]?.id,
+      ...partial
     }
     db.get().leads.push(lead)
     save()
@@ -202,9 +204,11 @@ function registerIpc(): void {
   ipcMain.handle('settings:update', (_e, patch: Partial<Settings>) => {
     const s = db.get().settings
     const prevMail = s.mail
+    const prevTour = s.tour
     Object.assign(s, patch)
     if (patch.titlebar) s.titlebar = { ...s.titlebar, ...patch.titlebar }
     if (patch.mail) s.mail = { ...prevMail, ...patch.mail }
+    if (patch.tour) s.tour = { ...prevTour, ...patch.tour }
     if (patch.theme) nativeTheme.themeSource = patch.theme
     save()
     notify()
@@ -271,6 +275,37 @@ function registerIpc(): void {
     }
     writeFileSync(r.filePath, '﻿' + csv, 'utf8')
     return r.filePath
+  })
+
+  // ---------- Projects ----------
+  ipcMain.handle('project:create', (_e, p: Omit<Project, 'id' | 'createdAt' | 'color'>) => {
+    const d = db.get()
+    const project: Project = { ...p, id: randomUUID(), color: d.projects.length % 7, createdAt: Date.now() }
+    d.projects.push(project)
+    d.settings.activeProject = project.id
+    save()
+    notify()
+    return project.id
+  })
+  ipcMain.handle('project:update', (_e, id: string, patch: Partial<Project>) => {
+    const p = db.get().projects.find((x) => x.id === id)
+    if (!p) return
+    Object.assign(p, patch, { id: p.id })
+    save()
+    notify()
+  })
+  // Deleting a project removes its leads, runs and drafts, and cancels its scheduled mail.
+  ipcMain.handle('project:delete', (_e, id: string) => {
+    const d = db.get()
+    const leadIds = new Set(d.leads.filter((l) => l.projectId === id).map((l) => l.id))
+    d.projects = d.projects.filter((p) => p.id !== id)
+    d.leads = d.leads.filter((l) => !leadIds.has(l.id))
+    d.runs = d.runs.filter((r) => r.projectId !== id || r.status === 'running')
+    d.drafts = d.drafts.filter((x) => !leadIds.has(x.leadId))
+    for (const o of d.outbox) if (leadIds.has(o.leadId) && o.status === 'scheduled') o.status = 'cancelled'
+    if (d.settings.activeProject === id) d.settings.activeProject = d.projects[0]?.id ?? 'all'
+    save()
+    notify()
   })
 
   // ---------- Mail ----------

@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowRight, Lightning, CaretRight, Check, FileText, FolderOpen, Globe, MagnifyingGlass, NotePencil, Play, Stop, Trash, WarningCircle, X
+  ArrowRight, Lightning, Stack, CaretRight, Check, FileText, FolderOpen, Globe, MagnifyingGlass, NotePencil, Play, Stop, Trash, WarningCircle, X
 } from '@phosphor-icons/react'
-import { BATCH_SIZE, DEFAULT_INPUT, MAX_LEADS, PHASES, type ResearchInput, type Run, type RunEvent } from '@shared/types'
+import { BATCH_SIZE, DEFAULT_INPUT, MAX_LEADS, PHASES, PROJECT_COLORS, type ResearchInput, type Run, type RunEvent } from '@shared/types'
 import { spring, useApp } from '../state'
-import { ShowMore, Switch, mod, timeAgo } from '../components/ui'
+import { Empty, ShowMore, Switch, mod, timeAgo } from '../components/ui'
 
 const KIND_ICON: Record<RunEvent['kind'], JSX.Element> = {
   phase: <ArrowRight size={13} />,
@@ -55,8 +55,16 @@ function useTick(on: boolean) {
 }
 
 export function Research() {
-  const { data, claude, go, toast } = useApp()
-  const [input, setInput] = useState<ResearchInput>(() => ({ ...DEFAULT_INPUT, ...(data.settings.lastInput ?? {}) }))
+  const { data, allData, project, editProject, claude, go, toast } = useApp()
+  // The form starts from the project: what it sells and who buys it. Edits are saved back on start.
+  const [forProject, setForProject] = useState<string>(project?.id ?? allData.projects[0]?.id ?? '')
+  const target = allData.projects.find((p) => p.id === (project?.id ?? forProject)) ?? null
+  const fromProject = (p: typeof target): ResearchInput => ({
+    ...DEFAULT_INPUT, ...(data.settings.lastInput ?? {}),
+    ...(p ? { product: p.product, folder: p.folder, industry: p.industry, location: p.location, size: p.size, pains: p.pains, tech: p.tech, projectId: p.id } : {})
+  })
+  const [input, setInput] = useState<ResearchInput>(() => fromProject(target))
+  useEffect(() => { setInput((i) => ({ ...fromProject(target), engine: i.engine, deepTop: i.deepTop, count: i.count, extra: i.extra })) }, [target?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [more, setMore] = useState(!!(input.pains || input.tech || input.extra))
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,7 +85,7 @@ export function Research() {
     setStarting(true)
     setError(null)
     try {
-      const id = await window.lp.research.start(input)
+      const id = await window.lp.research.start({ ...input, projectId: target?.id })
       setSelectedId(id)
     } catch (e) {
       setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''))
@@ -103,9 +111,30 @@ export function Research() {
         </div>
       </div>
 
+      {!allData.projects.length ? (
+        <div className="card">
+          <Empty icon={<Stack size={22} />} title="Create your first project" action={<button className="btn btn-primary" onClick={() => editProject('new')}>New project</button>}>
+            A project holds what you sell and who buys it. Each one has its own leads, pipeline and outreach.
+          </Empty>
+        </div>
+      ) : (
       <div className="research">
         <form className="card form" onSubmit={(e) => { e.preventDefault(); start() }}>
-          <div className="field">
+          <div className="project-banner">
+            <span className="proj-sq sm" style={{ background: PROJECT_COLORS[(target?.color ?? 0) % PROJECT_COLORS.length] }}>{(target?.name ?? 'P').slice(0, 1).toUpperCase()}</span>
+            {project ? (
+              <span className="grow">Leads go to <b>{project.name}</b>. Changes below are saved to the project when you start.</span>
+            ) : (
+              <span className="grow">
+                Leads go to{' '}
+                <select className="input" style={{ width: 'auto', minHeight: 28, padding: '2px 26px 2px 8px', display: 'inline-block' }} value={forProject} onChange={(e) => setForProject(e.target.value)} aria-label="Project for this run">
+                  {allData.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </span>
+            )}
+            {target && <button type="button" className="btn btn-plain" onClick={() => editProject(target.id)}>Edit project</button>}
+          </div>
+          <div className="field" data-tour="research-product">
             <label htmlFor="r-product">What you sell</label>
             <textarea id="r-product" className="input" rows={4} value={input.product} onChange={(e) => set({ product: e.target.value })}
               placeholder="What it is, who it is for and the problem it solves. Two or three sentences is enough." />
@@ -125,7 +154,7 @@ export function Research() {
             )}
             <span className="help">Claude reads the code or docs in this folder to understand the product. Nothing is changed.</span>
           </div>
-          <div className="two">
+          <div className="two" data-tour="research-icp">
             <div className="field"><label htmlFor="r-ind">Industry</label><input id="r-ind" className="input" value={input.industry} onChange={(e) => set({ industry: e.target.value })} placeholder="Cafés and restaurants" /></div>
             <div className="field"><label htmlFor="r-loc">Location</label><input id="r-loc" className="input" value={input.location} onChange={(e) => set({ location: e.target.value })} placeholder="Tunis, Tunisia" /></div>
           </div>
@@ -140,7 +169,7 @@ export function Research() {
               </motion.div>
             )}
           </AnimatePresence>
-          <div className="field">
+          <div className="field" data-tour="research-engine">
             <span className="label">How to research</span>
             <div className="engine-pick" role="radiogroup" aria-label="How to research">
               <button type="button" role="radio" aria-checked={fast} className={`engine ${fast ? 'on' : ''}`} onClick={() => set({ engine: 'fast' })}>
@@ -178,7 +207,7 @@ export function Research() {
             </div>
           )}
           <div className="form-foot">
-            <button type="submit" className="btn btn-primary lg" disabled={!ready || !!running || starting}>
+            <button type="submit" data-tour="research-start" className="btn btn-primary lg" disabled={!ready || !!running || starting}>
               <Play size={14} weight="fill" />{running ? 'Research running' : starting ? 'Starting' : 'Start research'}
             </button>
             <span className="help">{ready ? `${mod()} Enter` : 'Describe the product or choose its folder'}</span>
@@ -187,6 +216,7 @@ export function Research() {
 
         <RunPanel run={selected} onViewLeads={() => go('leads', { filter: 'all' })} onToast={toast} />
       </div>
+      )}
 
       {data.runs.length > 0 && (
         <section className="history">
@@ -231,7 +261,7 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
 
   if (!run) {
     return (
-      <div className="card run">
+      <div className="card run" data-tour="run-panel">
         <div className="run-head"><b>Live run</b></div>
         <ol className="phases" style={{ borderBottom: 0 }}>
           {PHASES.map((p) => (
@@ -248,7 +278,7 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
   const state = isRunning ? 'Running' : run.status === 'done' ? 'Finished' : run.status === 'cancelled' ? 'Stopped' : 'Failed'
 
   return (
-    <div className="card run">
+    <div className="card run" data-tour="run-panel">
       <div className="run-head">
         <div style={{ minWidth: 0 }}><b>{run.title}</b><div className="muted" style={{ fontSize: 12 }}>{timeAgo(run.createdAt)} · {elapsed(run.createdAt, run.finishedAt)} · <span className="num">{run.leadIds.length} of {run.input.count} leads</span>{multi && isRunning ? ` · batch ${run.batch} of ${run.batches}` : ''}</div></div>
         <span className="chip"><span className={`dot ${isRunning ? 'live' : run.status === 'done' ? '' : run.status === 'failed' ? 'warn' : 'idle'}`} />{state}</span>

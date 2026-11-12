@@ -46,7 +46,7 @@ export function MailSection() {
   return (
     <section>
       <h2 className="section-title">Email</h2>
-      <div className="card">
+      <div className="card" data-tour="mail-card">
         <div className="conn">
           <div className="conn-ic"><EnvelopeSimple size={20} /></div>
           <div style={{ minWidth: 0 }}>
@@ -110,7 +110,7 @@ export function MailSection() {
             )}
           </div>
         </div>
-        <div className="set-row">
+        <div className="set-row" data-tour="mail-test">
           <div><b>Check the connection</b><span>Signs in for sending and for reading replies. The test email goes to your own address.</span></div>
           <div className="ctl">
             <button className="btn btn-ghost" disabled={!!busy || !data.hasMailPassword} onClick={() => run('test')}><ArrowsClockwise size={14} />{busy === 'test' ? 'Testing' : 'Test'}</button>

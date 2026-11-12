@@ -153,7 +153,7 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
           </div>
         )}
 
-        <div className="d-sec">
+        <div className="d-sec" data-tour="drawer-contact">
           <h3>Contact</h3>
           <div className="contacts">
             {contacts.map((c) => (
@@ -232,7 +232,7 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
         }}>
           {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
-        <button className="btn btn-primary" onClick={() => { setOutreachLeadId(lead.id); go('outreach') }}>
+        <button className="btn btn-primary" data-tour="drawer-write" onClick={() => { setOutreachLeadId(lead.id); go('outreach') }}>
           <PaperPlaneTilt size={14} />
           Write message
         </button>

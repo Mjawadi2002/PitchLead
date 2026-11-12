@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { ArrowRight, CaretDown, CaretUp, CheckCircle, Stop, WarningCircle, X } from '@phosphor-icons/react'
 import { spring, useApp } from '../state'
+import { tourHidesDock } from './Tour'
 
 /**
  * Floating research panel, bottom right. Shows while a run is going (and after it ends,
@@ -24,7 +25,7 @@ export function ResearchDock() {
   useEffect(() => { if (live) setDismissed(null) }, [run?.id, live])
 
   const recentlyEnded = run && !live && run.finishedAt && Date.now() - run.finishedAt < 10 * 60_000
-  const show = run && view !== 'research' && dismissed !== run.id && (live || recentlyEnded)
+  const show = run && view !== 'research' && dismissed !== run.id && (live || recentlyEnded) && !tourHidesDock(data.settings.tour)
 
   const total = run?.input.count ?? 0
   const found = run?.leadIds.length ?? 0

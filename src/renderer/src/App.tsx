@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClaudeStatus, Lead, Snapshot, UsageReport } from '@shared/types'
+import { ProjectModal } from './components/ProjectModal'
 import { Ctx, spring, type AppCtx, type LeadFilter, type ToastOpts, type View } from './state'
 import { TitleBar } from './components/TitleBar'
 import { Sidebar } from './components/Sidebar'
 import { Palette } from './components/Palette'
 import { LeadDrawer } from './components/LeadDrawer'
-import { Onboarding } from './components/Onboarding'
+import { Tour, startTour } from './components/Tour'
 import { ResearchDock } from './components/ResearchDock'
 import { Today } from './views/Today'
 import { Research } from './views/Research'
@@ -25,7 +26,6 @@ export function App() {
   const [filter, setFilter] = useState<LeadFilter>('all')
   const [outreachLeadId, setOutreachLeadId] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
-  const [onboarding, setOnboarding] = useState(false)
   const [toastState, setToastState] = useState<{ id: number; text: string; opts?: ToastOpts } | null>(null)
   const toastTimer = useRef<number>()
   const toastRef = useRef<((text: string, opts?: ToastOpts) => void) | null>(null)
@@ -46,7 +46,8 @@ export function App() {
   useEffect(() => {
     window.lp.data.get().then((s) => {
       setData(s)
-      if (!s.settings.onboarded) setOnboarding(true)
+      // First launch (and anyone who has not seen it yet) gets the guided tour.
+      if (s.settings.tour?.status === 'new') startTour()
     })
     return window.lp.data.onChange(setData)
   }, [])
@@ -136,10 +137,25 @@ export function App() {
   }, [data, go, toggleSidebar])
 
   const sidebarCollapsed = !!data && (narrow ? !peek : data.settings.sidebarCollapsed)
+  // Every screen sees only the selected project. Running research stays visible everywhere.
+  const [projectModal, setProjectModal] = useState<string | null>(null)
+  const active = data?.settings.activeProject ?? 'all'
+  const scoped = useMemo<Snapshot | null>(() => {
+    if (!data) return null
+    if (active === 'all' || !data.projects.some((p) => p.id === active)) return data
+    const leads = data.leads.filter((l) => l.projectId === active)
+    const ids = new Set(leads.map((l) => l.id))
+    return { ...data, leads, runs: data.runs.filter((r) => r.projectId === active || r.status === 'running'), drafts: data.drafts.filter((d) => ids.has(d.leadId)), outbox: data.outbox.filter((o) => ids.has(o.leadId)) }
+  }, [data, active])
+  const project = data?.projects.find((p) => p.id === active) ?? null
+
   const ctx = useMemo<AppCtx | null>(
     () =>
-      data && {
-        data,
+      data && scoped && {
+        data: scoped,
+        allData: data,
+        project,
+        editProject: (id) => setProjectModal(id),
         claude,
         refreshClaude,
         view,
@@ -153,13 +169,13 @@ export function App() {
         toast,
         openPalette: () => setPalette(true),
         removeLeads,
-        showOnboarding: () => setOnboarding(true),
+        showOnboarding: () => { startTour() },
         sidebarCollapsed,
         toggleSidebar,
         usage,
         refreshUsage
       },
-    [data, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads, sidebarCollapsed, toggleSidebar, usage, refreshUsage]
+    [data, scoped, project, claude, refreshClaude, view, go, leadId, filter, outreachLeadId, toast, removeLeads, sidebarCollapsed, toggleSidebar, usage, refreshUsage]
   )
 
   if (!ctx || !data) return <div className="app" />
@@ -197,7 +213,8 @@ export function App() {
 
         <ResearchDock />
         <AnimatePresence>{palette && <Palette key="palette" onClose={() => setPalette(false)} />}</AnimatePresence>
-        <AnimatePresence>{onboarding && <Onboarding key="onb" onClose={() => setOnboarding(false)} />}</AnimatePresence>
+        <Tour />
+        <AnimatePresence>{projectModal && <ProjectModal key={projectModal} id={projectModal} onClose={() => setProjectModal(null)} />}</AnimatePresence>
         <AnimatePresence>
           {toastState && (
             <motion.div

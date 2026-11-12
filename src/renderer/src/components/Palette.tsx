@@ -1,10 +1,11 @@
 import { motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowRight, Buildings, Export, GearSix, House, Kanban, MagnifyingGlass, Moon, PaperPlaneTilt, Plus, SidebarSimple, Sun, UsersThree
+  Compass, Stack,   ArrowRight, Buildings, Export, GearSix, House, Kanban, MagnifyingGlass, Moon, PaperPlaneTilt, Plus, SidebarSimple, Sun, UsersThree
 } from '@phosphor-icons/react'
 import { spring, useApp } from '../state'
 import { stageLabel } from './ui'
+import { startTour } from './Tour'
 
 interface Item {
   id: string
@@ -17,13 +18,18 @@ interface Item {
 }
 
 export function Palette({ onClose }: { onClose: () => void }) {
-  const { data, go, openLead, toast } = useApp()
+  const { data, allData, project, editProject, go, openLead, toast } = useApp()
   const [q, setQ] = useState('')
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
 
   const items = useMemo<Item[]>(() => {
     const ic = 16
+    const projects: Item[] = [
+      { id: 'p-new', group: 'Projects', label: 'New project', icon: <Plus size={ic} />, run: () => editProject('new'), keywords: 'create business product service' },
+      ...allData.projects.filter((p) => p.id !== project?.id).map((p) => ({ id: 'p-' + p.id, group: 'Projects', label: 'Switch to ' + p.name, icon: <Stack size={ic} />, run: () => { window.lp.settings.update({ activeProject: p.id }) }, keywords: 'project' })),
+      ...(project ? [{ id: 'p-all', group: 'Projects', label: 'Show all projects', icon: <Stack size={ic} />, run: () => { window.lp.settings.update({ activeProject: 'all' }) }, keywords: 'project' }] : [])
+    ]
     const nav: Item[] = [
       { id: 'n-research', group: 'Start', label: 'New research', icon: <Plus size={ic} />, run: () => go('research'), keywords: 'find leads run' },
       { id: 'n-today', group: 'Go to', label: 'Today', icon: <House size={ic} />, run: () => go('today') },
@@ -39,6 +45,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
         id: 'a-theme', group: 'Actions', label: 'Switch to light or dark', icon: matchMedia('(prefers-color-scheme: dark)').matches ? <Sun size={ic} /> : <Moon size={ic} />,
         run: () => window.lp.settings.update({ theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark' }), keywords: 'theme appearance'
       },
+      { id: 'a-tour', group: 'Actions', label: 'Take the tour', icon: <Compass size={ic} />, run: () => { startTour() }, keywords: 'onboarding guide help tutorial' },
       {
         id: 'a-export', group: 'Actions', label: 'Export all leads as CSV', icon: <Export size={ic} />,
         run: async () => {
@@ -58,8 +65,8 @@ export function Palette({ onClose }: { onClose: () => void }) {
         keywords: `${l.industry} ${l.location} ${l.decisionMaker} ${l.website}`,
         run: () => go('leads', { filter: 'all', leadId: l.id })
       }))
-    return [...nav, ...leads]
-  }, [data, go, toast])
+    return [...nav, ...projects, ...leads]
+  }, [data, allData, project, editProject, go, toast])
 
   const results = useMemo(() => {
     const s = q.trim().toLowerCase()

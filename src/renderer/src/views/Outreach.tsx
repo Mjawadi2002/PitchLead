@@ -171,7 +171,7 @@ function Writer() {
         <ShowMore shown={shown} total={list.length} step={30} noun="leads" onMore={() => setShown((n) => n + 30)} />
       </div>
 
-      <div className="card editor">
+      <div className="card editor" data-tour="outreach-editor">
         <div className="editor-head">
           <Seg label="Channel" value={channel} onChange={setChannel} options={[{ value: 'email', label: 'Email' }, { value: 'linkedin', label: 'LinkedIn' }]} />
           <Seg label="Language" value={lang} onChange={setLang} options={[{ value: 'en', label: 'English' }, { value: 'fr', label: 'French' }, { value: 'ar', label: 'Arabic' }]} />
@@ -242,7 +242,7 @@ function Writer() {
         )}
 
         {channel === 'email' && readySteps.length > 0 && !busy && (
-          <div className="send-bar">
+          <div className="send-bar" data-tour="send-bar">
             {firstSent && !activeSeq.length ? (
               <span className="grow">
                 <b>Already contacted.</b> Email 1 was sent {timeAgo(firstSent.sentAt!)}

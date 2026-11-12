@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { CaretDown, CaretUp, EnvelopeSimple, Export, Globe, IdentificationCard, MagnifyingGlass, Phone, Plus, Star, Trash, UsersThree, X } from '@phosphor-icons/react'
-import { STAGES, type Lead, type Stage } from '@shared/types'
+import { PROJECT_COLORS, STAGES, type Lead, type Stage } from '@shared/types'
 import { spring, useApp, type LeadFilter } from '../state'
 import { Checkbox, Empty, PAGE_SIZES, Pager, Score, StagePill, initials } from '../components/ui'
 
@@ -225,6 +225,10 @@ export function Leads() {
 }
 
 function Row({ lead: l, i, compact, active, checked, onCheck, onOpen }: { lead: Lead; i: number; compact: boolean; active: boolean; checked: boolean; onCheck: () => void; onOpen: () => void }) {
+  const { allData, project } = useApp()
+  // Under "All projects", each row says which project it belongs to.
+  const showProject = !project && allData.projects.length > 1
+  const projectOf = (x: Lead) => allData.projects.find((p) => p.id === x.projectId)
   return (
     <motion.tr
       initial={{ opacity: 0.4 }}
@@ -232,6 +236,7 @@ function Row({ lead: l, i, compact, active, checked, onCheck, onOpen }: { lead: 
       transition={{ duration: 0.14, delay: Math.min(i, 6) * 0.012 }}
       data-active={active}
       data-checked={checked}
+      data-tour={i === 0 ? 'lead-row' : undefined}
       onClick={onOpen}
     >
       <td><Checkbox label={`Select ${l.name}`} checked={checked} onChange={onCheck} /></td>
@@ -240,7 +245,7 @@ function Row({ lead: l, i, compact, active, checked, onCheck, onOpen }: { lead: 
           <Star size={14} weight={l.starred ? 'fill' : 'regular'} />
         </button>
       </td>
-      <td title={l.name}><div className="co"><span className="co-badge">{initials(l.name)}</span><div><b>{l.name}</b><span>{compact ? l.location : l.industry}</span></div></div></td>
+      <td title={l.name}><div className="co"><span className="co-badge">{initials(l.name)}</span><div><b>{l.name}</b><span>{showProject && projectOf(l) ? <span className="lead-proj"><i style={{ background: PROJECT_COLORS[projectOf(l)!.color % PROJECT_COLORS.length] }} />{projectOf(l)!.name} · </span> : null}{compact ? l.location : l.industry}</span></div></div></td>
       {!compact && <td title={l.location}>{l.location}</td>}
       <td><Score value={l.score} /></td>
       {!compact && <td title={l.decisionMaker}>{l.decisionMaker}</td>}

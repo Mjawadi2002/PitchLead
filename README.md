@@ -23,6 +23,20 @@ follow-ups when someone replies, and moves the lead along the pipeline.
 
 Nothing paid is needed besides your Claude subscription.
 
+### Projects
+
+Each project is one thing you sell: a product or a service, its description, and who buys it
+(industry, location, size, the problem it solves). Research runs use the project's details, and
+every screen (Today, Leads, Pipeline, Outreach, the filters) shows only the selected project, or
+everything under "All projects". Switch projects from the top of the sidebar or with Ctrl K.
+
+### Guided tour
+
+On first launch a live tour walks through the real app: connect Claude, add your name, connect
+your mailbox, create a project, run your first search, open a lead, write a sequence, and see the
+pipeline. Each step highlights the actual control and moves on once you have done it; steps that
+need an outside action can be skipped. Replay it any time from Settings or Ctrl K, "Take the tour".
+
 ### Two research engines
 
 | | Fast (default) | Deep |

@@ -9,7 +9,7 @@ import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from
 const CRUMB = { today: 'Today', research: 'Research', leads: 'Leads', pipeline: 'Pipeline', outreach: 'Outreach', settings: 'Settings' }
 
 export function TitleBar() {
-  const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar, usage } = useApp()
+  const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar, usage, project } = useApp()
   const pct = usagePercent(usage)
   const usageTone = usage?.limitHit ? 'neg' : pct !== null && pct >= 85 ? 'warn' : ''
   const usageTitle = usage?.limitHit
@@ -72,12 +72,12 @@ export function TitleBar() {
           <SidebarSimple size={17} />
         </button>
         <div className="brand"><Logo size={20} /><span>Lead<span className="brand-p">Pitch</span></span></div>
-        <span className="crumb">{CRUMB[view]}</span>
+        <span className="crumb">{project ? <><span className="crumb-proj">{project.name}</span><span className="crumb-sep">/</span></> : null}{CRUMB[view]}</span>
       </div>
 
       <div className="tb-center">
         {tb.search && (
-          <button className="search-trigger" onClick={openPalette} aria-label="Search leads and commands">
+          <button className="search-trigger" data-tour="search" onClick={openPalette} aria-label="Search leads and commands">
             <MagnifyingGlass size={15} />
             <span className="grow st-text">Search leads and commands</span>
             <span className="kbd st-text">{mod()} K</span>

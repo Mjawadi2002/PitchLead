@@ -87,8 +87,15 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
     phase: 0,
     angle: batches > 1 ? ANGLES[i % ANGLES.length] : ''
   }))
+  // Each run belongs to a project. Leads are de-duplicated within that project only,
+  // so the same company can be a lead for two different offers.
+  const projectId = input.projectId || (settings.activeProject !== 'all' ? settings.activeProject : data.projects[0]?.id)
+  const project = data.projects.find((p) => p.id === projectId)
+  if (project) Object.assign(project, { product: input.product, folder: input.folder, industry: input.industry, location: input.location, size: input.size, pains: input.pains, tech: input.tech })
+  const inProject = () => data.leads.filter((l) => !projectId || l.projectId === projectId)
   const run: Run = {
     id: randomUUID(),
+    projectId,
     title: titleFor(input),
     createdAt: Date.now(),
     status: 'running',
@@ -140,8 +147,8 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
       let res: { error?: string; warning?: string } = {}
       try {
         res = await runFast({
-          run, input: run.input, settings, apiKey, existing: [...data.leads], target, signal: ctrl.signal, push, notify,
-          addLead: (l) => { data.leads.push(l); run.leadIds.push(l.id); save() }
+          run, input: run.input, settings, apiKey, existing: inProject(), target, signal: ctrl.signal, push, notify,
+          addLead: (l) => { l.projectId = projectId; data.leads.push(l); run.leadIds.push(l.id); save() }
         })
       } catch (e) {
         res = { error: (e as Error).message }
@@ -164,7 +171,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
 
   /** Adds leads from one batch, skipping any company already known. Shared by all batches. */
   const addLeads = (parsed: LeadsFile, state: BatchState): number => {
-    const seen = new Set(data.leads.flatMap((l) => [norm(l.name), norm(l.website)]).filter(Boolean))
+    const seen = new Set(inProject().flatMap((l) => [norm(l.name), norm(l.website)]).filter(Boolean))
     const now = Date.now()
     let added = 0
     for (const raw of parsed.leads ?? []) {
@@ -203,6 +210,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
         updatedAt: now,
         stageChangedAt: now
       }
+      lead.projectId = projectId
       data.leads.push(lead)
       run.leadIds.push(lead.id)
       added++
@@ -280,7 +288,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
         }
       })
       child.stderr?.on('data', (d) => (stderr += d))
-      child.stdin?.end(researchUserPrompt({ ...input, count: state.want }, data.leads.map((l) => l.name), state.angle || undefined))
+      child.stdin?.end(researchUserPrompt({ ...input, count: state.want }, inProject().map((l) => l.name), state.angle || undefined))
 
       // A batch that runs past 30 minutes is stopped so it cannot hold up the whole run.
       let timedOut = false

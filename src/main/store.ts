@@ -1,10 +1,12 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
-import { DEFAULT_MAIL, DEFAULT_SETTINGS, type Draft, type Lead, type MailStatus, type OutboxItem, type Run, type Settings, type Snapshot } from '@shared/types'
+import { randomUUID } from 'crypto'
+import { DEFAULT_MAIL, DEFAULT_SETTINGS, type Draft, type Lead, type Project, type MailStatus, type OutboxItem, type Run, type Settings, type Snapshot } from '@shared/types'
 
 interface Data {
   version: 1
+  projects: Project[]
   leads: Lead[]
   runs: Run[]
   drafts: Draft[]
@@ -27,7 +29,7 @@ let timer: NodeJS.Timeout | null = null
 
 export function loadStore(): void {
   mkdirSync(dir(), { recursive: true })
-  const empty: Data = { version: 1, leads: [], runs: [], drafts: [], outbox: [], usageLog: [], settings: structuredClone(DEFAULT_SETTINGS) }
+  const empty: Data = { version: 1, projects: [], leads: [], runs: [], drafts: [], outbox: [], usageLog: [], settings: structuredClone(DEFAULT_SETTINGS) }
   if (!existsSync(file())) {
     data = empty
     return
@@ -41,8 +43,22 @@ export function loadStore(): void {
         ...DEFAULT_SETTINGS,
         ...(raw.settings ?? {}),
         titlebar: { ...DEFAULT_SETTINGS.titlebar, ...(raw.settings?.titlebar ?? {}) },
-        mail: { ...DEFAULT_MAIL, ...(raw.settings?.mail ?? {}) }
+        mail: { ...DEFAULT_MAIL, ...(raw.settings?.mail ?? {}) },
+        tour: { ...DEFAULT_SETTINGS.tour, ...(raw.settings?.tour ?? {}) }
       }
+    }
+    data.projects ??= []
+    // Leads from before projects existed go into a first project built from the last search.
+    if (!data.projects.length && (data.leads.length || data.runs.length)) {
+      const li = data.settings.lastInput
+      const p: Project = {
+        id: randomUUID(), name: li?.product ? li.product.split(/[:.\n]/)[0].trim().slice(0, 40) || 'My first project' : 'My first project',
+        offerType: 'product', product: li?.product ?? '', folder: li?.folder ?? '', industry: li?.industry ?? '', location: li?.location ?? '',
+        size: li?.size ?? '', pains: li?.pains ?? '', tech: li?.tech ?? '', color: 0, createdAt: Date.now()
+      }
+      data.projects.push(p)
+      for (const l of data.leads) l.projectId ??= p.id
+      for (const r of data.runs) r.projectId ??= p.id
     }
     data.outbox ??= []
     data.usageLog ??= []
@@ -97,6 +113,7 @@ export const db = {
   get: () => data,
   snapshot(): Snapshot {
     return {
+      projects: data.projects,
       leads: data.leads,
       runs: data.runs.map((r) => ({ ...r, events: r.events.slice(-400) })),
       drafts: data.drafts,

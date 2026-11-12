@@ -677,3 +677,25 @@ td:has(.ct-icons) { overflow: visible; }
 .menu button:hover { background: var(--hover); }
 .menu b { font-weight: 550; }
 .menu span { font-size: 12px; color: var(--fg-3); }
+
+/* ---------- Guided tour ---------- */
+.tour { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.tour-dim { position: fixed; background: rgba(12, 14, 24, 0.42); pointer-events: auto; }
+.tour-ring { position: fixed; border-radius: 12px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft); pointer-events: none; }
+.tour-ring.passive { box-shadow: 0 0 0 2px var(--accent-line), 0 0 0 6px var(--accent-soft); }
+.tour-card { position: fixed; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-pop); padding: 16px 18px 14px; pointer-events: auto; display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 32px); overflow: auto; }
+.tc-head { display: flex; align-items: center; justify-content: space-between; }
+.tc-count { font-size: 11.5px; color: var(--fg-3); font-weight: 500; }
+.tc-progress { height: 3px; border-radius: 3px; background: var(--hover); overflow: hidden; margin-top: -2px; }
+.tc-progress i { display: block; height: 100%; background: var(--accent-fill); transition: width 0.5s var(--ease); }
+.tour-card h3 { margin: 2px 0 0; font-size: 16px; font-weight: 600; letter-spacing: -0.015em; }
+.tc-body { display: flex; flex-direction: column; gap: 8px; color: var(--fg-2); line-height: 1.55; font-size: 13px; }
+.tc-body p { margin: 0; }
+.tc-body b { color: var(--fg); font-weight: 600; }
+.tc-task { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 9px; background: var(--surface-2); font-size: 12.5px; font-weight: 500; transition: background 0.3s, color 0.3s; }
+.tc-task.ok { background: var(--pos-soft); color: var(--pos); }
+.tc-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+.tc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tc-foot { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
+.tc-foot .grow { flex: 1; }
+@media (prefers-reduced-motion: reduce) { .tc-progress i { transition: none; } }

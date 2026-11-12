@@ -46,7 +46,7 @@ export function Pipeline() {
         </div>
       </div>
       <LayoutGroup>
-        <div className="board">
+        <div className="board" data-tour="board">
           {STAGES.map((s) => {
             const items = data.leads.filter((l) => l.stage === s.id).sort((a, b) => b.score - a.score)
             return (

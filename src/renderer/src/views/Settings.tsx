@@ -50,7 +50,7 @@ export function SettingsView() {
       <div className="settings">
         <section>
           <h2 className="section-title">Claude</h2>
-          <div className="card">
+          <div className="card" data-tour="claude-card">
             <div className="conn">
               <div className="conn-ic"><TerminalWindow size={20} /></div>
               <div style={{ minWidth: 0 }}>
@@ -157,7 +157,7 @@ export function SettingsView() {
         <section>
           <h2 className="section-title">Outreach</h2>
           <div className="card">
-            <div className="set-row">
+            <div className="set-row" data-tour="sender-name">
               <div><b>Your name</b><span>Used to sign the messages Claude drafts.</span></div>
               <input className="input" style={{ width: 220 }} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name !== s.senderName && set({ senderName: name.trim() })} aria-label="Your name" />
             </div>
@@ -227,7 +227,7 @@ export function SettingsView() {
             <b style={{ fontWeight: 600, fontSize: 15 }}>Lead<span className="brand-p">Pitch</span> 0.1</b>
             <p>Built on the Lead Research Assistant skill from ComposioHQ's awesome-claude-skills (Apache 2.0). Your leads are stored only on this computer.</p>
           </div>
-          <button className="btn btn-ghost" onClick={showOnboarding}>Setup guide</button>
+          <button className="btn btn-ghost" onClick={showOnboarding}>Take the tour</button>
         </div>
       </div>
     </div>

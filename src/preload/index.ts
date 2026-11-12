@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ClaudeStatus, Draft, Lang, Lead, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
+import type { ClaudeStatus, Draft, Lang, Lead, Project, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
 
 const api = {
   platform: process.platform,
@@ -45,6 +45,11 @@ const api = {
   settings: {
     update: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
     setApiKey: (key: string | null): Promise<void> => ipcRenderer.invoke('apikey:set', key)
+  },
+  projects: {
+    create: (p: Omit<Project, 'id' | 'createdAt' | 'color'>): Promise<string> => ipcRenderer.invoke('project:create', p),
+    update: (id: string, patch: Partial<Project>): Promise<void> => ipcRenderer.invoke('project:update', id, patch),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke('project:delete', id)
   },
   mail: {
     setPassword: (pw: string | null): Promise<void> => ipcRenderer.invoke('mail:setPassword', pw),

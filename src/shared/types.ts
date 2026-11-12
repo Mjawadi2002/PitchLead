@@ -331,6 +331,8 @@ export interface UsageReport {
   limitHit?: { at: number; message: string }
   /** LeadPitch is sending tasks to free models because the Claude limit was reached. */
   freeActive?: boolean
+  /** Real plan usage reported by Claude, in percent, with reset times. */
+  plan?: { fiveHour?: { pct: number; resetsAt: number }; sevenDay?: { pct: number; resetsAt: number }; at: number }
   checkedAt: number
 }
 

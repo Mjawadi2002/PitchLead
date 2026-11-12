@@ -7,7 +7,7 @@ import { BATCH_SIZE, MAX_LEADS, PHASES } from '@shared/types'
 import { AUTH_ERROR, LIMIT_ERROR, extractJson, killTree, readIfExists, resolveClaude, spawnClaude, writeText } from './claude'
 import { researchSystemPrompt, researchUserPrompt } from './prompts'
 import { db, save } from './store'
-import { noteLimit, recordModelUsage } from './usage'
+import { noteLimit, notePlanLimits, recordModelUsage } from './usage'
 import { runFast } from './fast'
 import { modelFor } from './models'
 import { useFreeNow } from './omniroute'
@@ -290,6 +290,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
             }
           }
         }
+        if (j.type === 'rate_limit_event') notePlanLimits(j.rate_limit_info)
         if (j.type === 'result') { result = j; recordModelUsage(j.modelUsage, j.usage) }
       }
 

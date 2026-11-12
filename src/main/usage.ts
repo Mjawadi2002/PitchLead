@@ -45,6 +45,24 @@ export function noteLimit(message: string): void {
   limitHit = { at: Date.now(), message: message.slice(0, 300) }
 }
 
+/** Your real plan usage, as Claude reports it with every reply (the same numbers as /usage in Claude Code). */
+let plan: UsageReport['plan'] | undefined
+
+export function notePlanLimits(info: any): void {
+  if (!info || typeof info !== 'object') return
+  const win = (w: any) => (w && Number.isFinite(Number(w.utilization)) ? { pct: Math.round(Number(w.utilization) * 100), resetsAt: Number(w.resetsAt) * 1000 || 0 } : undefined)
+  const fiveHour = win(info.unifiedWindows?.five_hour) ?? (info.rateLimitType === 'five_hour' ? win({ utilization: info.utilization, resetsAt: info.resetsAt }) : undefined)
+  const sevenDay = win(info.unifiedWindows?.seven_day)
+  if (!fiveHour && !sevenDay) return
+  plan = { fiveHour: fiveHour ?? plan?.fiveHour, sevenDay: sevenDay ?? plan?.sevenDay, at: Date.now() }
+  // Kept, so the meter shows the last real figure as soon as LeadPitch opens.
+  db.get().planUsage = plan
+  save()
+  if (info.status === 'rejected') noteLimit(`Claude usage limit reached. It resets at ${new Date((Number(info.resetsAt) || 0) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`)
+}
+
+export const planCheckedAt = () => plan?.at ?? 0
+
 function projectsDir(): string {
   const base = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
   return join(base, 'projects')
@@ -72,6 +90,7 @@ async function readFile(file: string, lp: boolean): Promise<Entry[]> {
 
 export async function usageReport(): Promise<UsageReport> {
   const now = Date.now()
+  plan ??= db.get().planUsage
   const dir = projectsDir()
   const entries: Entry[] = []
   if (existsSync(dir)) {
@@ -121,7 +140,22 @@ export async function usageReport(): Promise<UsageReport> {
     weekTokens: week.reduce((s, e) => s + e.tokens, 0),
     weekMessages: week.length,
     limitHit,
+    // A window that has reset since the last reply starts again at 0.
+    plan: plan && {
+      fiveHour: plan.fiveHour && (plan.fiveHour.resetsAt && plan.fiveHour.resetsAt < now ? { pct: 0, resetsAt: 0 } : plan.fiveHour),
+      sevenDay: plan.sevenDay && (plan.sevenDay.resetsAt && plan.sevenDay.resetsAt < now ? { pct: 0, resetsAt: 0 } : plan.sevenDay),
+      at: plan.at
+    },
     checkedAt: now
   }
 }
 
+
+/** The plan figures and limit notice as of now, without reading any logs. Fast enough for every refresh. */
+export function planNow(): Pick<UsageReport, 'plan' | 'limitHit'> {
+  const now = Date.now()
+  plan ??= db.get().planUsage
+  if (limitHit && now - limitHit.at > WINDOW) limitHit = undefined
+  const fresh = (w?: { pct: number; resetsAt: number }) => w && (w.resetsAt && w.resetsAt < now ? { pct: 0, resetsAt: 0 } : w)
+  return { limitHit, plan: plan && { fiveHour: fresh(plan.fiveHour), sevenDay: fresh(plan.sevenDay), at: plan.at } }
+}

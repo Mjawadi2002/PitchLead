@@ -33,6 +33,31 @@ export const FREE_PROVIDERS = [
   { id: 'nvidia', name: 'NVIDIA NIM', url: 'https://build.nvidia.com', note: 'Many open models. Free credits for developers.' }
 ] as const
 
+/**
+ * Models known to work on each free tier, checked 2026-11-12. "auto" in OmniRoute also tries keyless
+ * services that are often down, and a wrong model name puts a provider on a cooldown, so LeadPitch
+ * names models itself and keeps the one that answered.
+ */
+const FREE_MODELS: Record<string, string[]> = {
+  groq: ['groq/openai/gpt-oss-120b', 'groq/openai/gpt-oss-20b'],
+  gemini: ['gemini/gemini-3-flash-preview'],
+  cerebras: ['cerebras/gpt-oss-120b'],
+  mistral: ['mistral/mistral-small-latest'],
+  nvidia: ['nvidia/openai/gpt-oss-120b']
+}
+let lastGood = ''
+
+/** Models to try, in order: the one that last answered, then each connected provider's models. */
+export function freeModels(settings: Settings): string[] {
+  const chosen = settings.fallback.model?.trim()
+  if (chosen && chosen !== 'auto') return [chosen]
+  const connected = new Set((providers ?? []).map((p) => p.id))
+  const list = FREE_PROVIDERS.filter((p) => connected.has(p.id)).flatMap((p) => FREE_MODELS[p.id] ?? [])
+  const ordered = lastGood && list.includes(lastGood) ? [lastGood, ...list.filter((m) => m !== lastGood)] : list
+  return ordered.length ? ordered : ['auto/fast']
+}
+export const markFreeModelGood = (m: string) => { lastGood = m }
+
 const root = () => join(app.getPath('userData'), 'omniroute')
 const dataDir = () => join(root(), 'data')
 const homeDir = () => join(dataDir(), 'home')
@@ -231,17 +256,27 @@ async function cli(settings: Settings, args: string[], input?: string): Promise<
   return run(node.path, [bin(), ...args], { env: env(settings.fallback.port), input, cwd: root(), timeout: 120000 })
 }
 
+let lastRefresh = 0
+
 export async function refreshProviders(settings: Settings): Promise<{ id: string; masked: string }[]> {
   if (!isInstalled()) return (providers = [])
-  try {
+  lastRefresh = Date.now()
+  // Right after a key is added the database can be busy for a moment, so one failed read is retried.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await readProviders(settings) } catch { await new Promise((r) => setTimeout(r, 1500)) }
+  }
+  notify()
+  return providers ?? []
+}
+
+async function readProviders(settings: Settings): Promise<{ id: string; masked: string }[]> {
+  {
     const out = await cli(settings, ['keys', 'list', '--json'])
     const j = JSON.parse(out.slice(out.indexOf('{')))
     providers = (j.keys ?? []).filter((k: any) => k.isActive !== false).map((k: any) => {
       const m = String(k.maskedKey ?? '')
       return { id: String(k.provider), masked: m && !/^enc:/.test(m) ? m : 'Key saved' }
     })
-  } catch {
-    providers ??= []
   }
   notify()
   return providers!
@@ -262,9 +297,9 @@ export async function removeProvider(settings: Settings, id: string): Promise<vo
 
 export interface FreeRoute { baseUrl: string; key: string; model: string }
 
-export async function freeRoute(settings: Settings): Promise<FreeRoute> {
+export async function freeRoute(settings: Settings, model?: string): Promise<FreeRoute> {
   await ensureRunning(settings)
-  return { baseUrl: `http://127.0.0.1:${settings.fallback.port}`, key: LOCAL_KEY, model: settings.fallback.model || 'auto' }
+  return { baseUrl: `http://127.0.0.1:${settings.fallback.port}`, key: LOCAL_KEY, model: model ?? freeModels(settings)[0] }
 }
 
 const ready = () => isInstalled() && !!providers?.length
@@ -306,7 +341,8 @@ export function noteFreeCall(): void { freeCalls++ }
 export async function fallbackStatus(settings: Settings): Promise<FallbackStatus & { providers: { id: string; masked: string }[]; freeCalls: number; password?: string; port: number }> {
   const node = await findNode()
   const installed = isInstalled()
-  if (installed && providers === null && child) await refreshProviders(settings)
+  // Read the connected providers when they are unknown, or empty and not checked for a while.
+  if (installed && !installing && (providers === null || (!providers.length && Date.now() - lastRefresh > 15000))) await refreshProviders(settings)
   return {
     installed,
     installing,

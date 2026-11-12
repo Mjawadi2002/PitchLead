@@ -34,7 +34,7 @@ export interface AppCtx {
   sidebarCollapsed: boolean
   toggleSidebar: () => void
   usage: UsageReport | null
-  refreshUsage: () => void
+  refreshUsage: (force?: boolean) => void
 }
 
 export const Ctx = createContext<AppCtx>(null as unknown as AppCtx)

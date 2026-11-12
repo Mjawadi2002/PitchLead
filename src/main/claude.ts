@@ -1,4 +1,4 @@
-import { recordModelUsage } from './usage'
+import { notePlanLimits, recordModelUsage } from './usage'
 import { app } from 'electron'
 import { spawn, execFile, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
@@ -6,7 +6,7 @@ import { homedir } from 'os'
 import { basename, dirname, join } from 'path'
 import type { ClaudeStatus, Settings } from '@shared/types'
 import { WEB_TASKS, modelFor, type Task } from './models'
-import { activateFallback, claudeIsBack, freeRoute, noteFreeCall, useFreeNow, type FreeRoute } from './omniroute'
+import { activateFallback, claudeIsBack, freeModels, freeRoute, markFreeModelGood, noteFreeCall, useFreeNow, type FreeRoute } from './omniroute'
 
 const isWin = process.platform === 'win32'
 
@@ -176,11 +176,23 @@ export async function ask(opts: AskOptions): Promise<string> {
 
 /** A free-model call, with provider errors turned into plain words (and never mistaken for a Claude sign-in problem). */
 async function askFree(opts: AskOptions): Promise<string> {
-  try {
-    return await askOnce(opts, await freeRoute(opts.settings))
-  } catch (e) {
-    throw new Error(freeError((e as Error).message))
+  // Each connected provider's model in turn, with a time limit each, so one slow provider does not stall the run.
+  const models = freeModels(opts.settings)
+  const each = Math.min(opts.timeoutMs ?? 120000, 90000)
+  let last = ''
+  for (const model of models) {
+    if (opts.signal?.aborted) throw new Error('Stopped.')
+    try {
+      const text = await askOnce({ ...opts, timeoutMs: each }, await freeRoute(opts.settings, model))
+      if (!text.trim() || /^\(empty response\)$/.test(text.trim())) throw new Error('The free model returned an empty answer.')
+      markFreeModelGood(model)
+      return text
+    } catch (e) {
+      last = (e as Error).message
+      if (/^Stopped/.test(last) || /not installed|did not start|Node\.js/.test(last)) break
+    }
   }
+  throw new Error(freeError(last))
 }
 
 export function freeError(msg: string): string {
@@ -200,7 +212,7 @@ export async function askOnce(opts: AskOptions, free?: FreeRoute): Promise<strin
   mkdirSync(cwd, { recursive: true })
   const tools = (opts.tools ?? []).filter((t) => !free || !/^Web/.test(t))
   const args = [
-    '-p', '--output-format', 'json',
+    '-p', '--output-format', 'stream-json', '--verbose',
     '--model', free ? free.model : modelFor(opts.task, opts.settings),
     '--tools', tools.join(','),
     ...(tools.length ? ['--allowedTools', tools.join(','), '--permission-mode', 'dontAsk'] : []),
@@ -220,7 +232,16 @@ export async function askOnce(opts: AskOptions, free?: FreeRoute): Promise<strin
     child.on('close', () => {
       clearTimeout(timer)
       try {
-        const j = JSON.parse(out)
+        // Stream lines: the rate limit event carries your real plan usage; the result line carries the answer.
+        let j: any = null
+        for (const line of out.split(/\r?\n/)) {
+          if (!line.startsWith('{')) continue
+          let ev: any
+          try { ev = JSON.parse(line) } catch { continue }
+          if (ev.type === 'rate_limit_event' && !free) notePlanLimits(ev.rate_limit_info)
+          else if (ev.type === 'result') j = ev
+        }
+        if (!j) throw new Error('no result')
         if (free) { if (!j.is_error) noteFreeCall() }
         else recordModelUsage(j.modelUsage, j.usage)
         if (j.is_error || j.subtype !== 'success') reject(new Error(String(j.result || err || `${who} returned an error.`)))

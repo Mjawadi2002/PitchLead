@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { DEFAULT_MAIL, DEFAULT_SETTINGS, type Draft, type Lead, type Project, type MailStatus, type OutboxItem, type Run, type Settings, type Snapshot } from '@shared/types'
+import { DEFAULT_MAIL, DEFAULT_SETTINGS, type UsageReport, type Draft, type Lead, type Project, type MailStatus, type OutboxItem, type Run, type Settings, type Snapshot } from '@shared/types'
 
 interface Data {
   version: 1
@@ -14,6 +14,8 @@ interface Data {
   /** Tokens per Claude reply that LeadPitch made, for the usage meter. Claude Code keeps no log for these. */
   usageLog: { t: number; tokens: number; m?: string; c?: number }[]
   settings: Settings
+  /** Last real plan usage Claude reported, shown at startup until a fresh one arrives. */
+  planUsage?: UsageReport['plan']
   apiKey?: string // encrypted with safeStorage, base64
   mailPassword?: string // encrypted with safeStorage, base64
 }

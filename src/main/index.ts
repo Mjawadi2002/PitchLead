@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electro
 import { randomUUID } from 'crypto'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
-import type { Draft, Lead, Project, ResearchInput, Settings } from '@shared/types'
+import type { Draft, Lead, Project, ResearchInput, Settings, UsageReport } from '@shared/types'
 import { ask, askOnce, freeError, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
 import { memory } from './memory'
 import { FREE_PROVIDERS, addProvider, ensureRunning, fallbackStatus, freeRoute, install as installFree, isInstalled as freeInstalled, refreshProviders, removeProvider, setFallbackNotify, setFallbackToast, stop as stopFree, uninstall as uninstallFree, useFreeNow } from './omniroute'
@@ -10,7 +10,7 @@ import { disconnectLinkedin, initLinkedin, openLinkedin } from './linkedin'
 import { contactPrompt, draftPrompt, meetingPrompt, sequencePrompt } from './prompts'
 import { deepen } from './fast'
 import { cancelOutbox, checkReplies, queueSequence, sendTest, startMail, stopMail, testMailbox } from './mail'
-import { noteLimit, usageReport } from './usage'
+import { noteLimit, planCheckedAt, planNow, usageReport } from './usage'
 import { cancelAll, cancelRun, startRun } from './research'
 import { db, flushNow, loadStore, save } from './store'
 
@@ -191,7 +191,36 @@ function registerIpc(): void {
     return { found, failed }
   })
 
-  ipcMain.handle('usage:get', async () => ({ ...(await usageReport()), freeActive: useFreeNow(db.get().settings) || undefined }))
+  // Real plan usage comes with every Claude reply. When the last one is older than 10 minutes, or on Refresh,
+  // a one-word Haiku check fetches it (a very small amount of usage).
+  let probing: Promise<unknown> | null = null
+  let probedAt = 0
+  const probePlan = () => {
+    probedAt = Date.now()
+    const s = db.get().settings
+    if (s.mode !== 'subscription' || useFreeNow(s)) return Promise.resolve()
+    probing ??= ask({ settings: s, apiKey: null, prompt: 'Reply with the single word: ok', task: 'check', timeoutMs: 60000 })
+      .catch(() => {})
+      .finally(() => { probing = null })
+    return probing
+  }
+  // Token counts come from reading Claude Code's logs, which takes seconds, so the last counts are reused
+  // and recounted in the background; the plan percentages are always current.
+  let lastReport: UsageReport | null = null
+  let counting: Promise<void> | null = null
+  let countedAt = 0
+  const recount = () => (counting ??= usageReport().then((r) => { lastReport = r; countedAt = Date.now() }).finally(() => { counting = null }))
+  const changed = () => win?.webContents.send('fallback:changed')
+  ipcMain.handle('usage:get', async (_e, opts?: { refresh?: boolean }) => {
+    const stale = Date.now() - Math.max(planCheckedAt(), probedAt) > 10 * 60_000
+    if (opts?.refresh) await Promise.all([probePlan(), recount()])
+    else {
+      if (stale) probePlan().then(changed)
+      if (!lastReport || Date.now() - countedAt > 30_000) recount().then(changed)
+    }
+    const base: UsageReport = lastReport ?? { current: null, peakTokens: 0, weekTokens: 0, weekMessages: 0, checkedAt: Date.now() }
+    return { ...base, ...planNow(), freeActive: useFreeNow(db.get().settings) || undefined }
+  })
 
   // Memory
   ipcMain.handle('memory:stats', () => memory.stats())

@@ -108,7 +108,7 @@ export function draftPrompt(opts: {
 
 Channel: ${channel === 'email' ? 'Email' : 'LinkedIn'}. ${limits}
 Language: ${LANG_NAME[lang]}.
-Sender: ${sender || 'the founder'}.
+Sender: ${sender || 'not given'}.
 Product: ${product || 'see the value proposition below'}.
 
 Lead:
@@ -127,7 +127,7 @@ ${JSON.stringify(
   2
 )}
 
-Rules: open with the specific signal, not with the sender. One clear ask. Plain words, no emoji, no hype, no em dashes. Sign with the sender's first name.
+Rules: open with the specific signal, not with the sender. One clear ask. Plain words, no emoji, no hype, no em dashes. Sign with the sender's first name. If no sender name is given, end without a name; never invent one.
 Never invent offers, prices, free trials, discounts, customers or results that are not stated in the product description or the instruction.
 ${previous ? `\nThe current draft is below. Write a clearly different version.${instruction ? ` Change it like this: ${instruction}.` : ''}\n---\n${previous}\n---` : ''}
 
@@ -244,7 +244,7 @@ export function sequencePrompt(o: { lead: Lead; product: string; sender: string;
   return `Write a cold email sequence and a LinkedIn note for this lead.
 
 Language: ${LANG[o.lang]}
-Sender: ${o.sender || 'the founder'}
+Sender: ${o.sender || 'not given'}
 Product: ${o.product || 'see the value proposition below'}
 Lead: ${JSON.stringify({ company: o.lead.name, contact: o.lead.contactName || '', role: o.lead.decisionMaker, location: o.lead.location, signal: o.lead.signal, why: o.lead.why, valueProp: o.lead.valueProp, strategy: o.lead.strategy, starters: o.lead.starters })}
 
@@ -253,7 +253,7 @@ Email 2 (sent ${o.days[0] ?? 3} days later if no reply): a short bump that adds 
 Email 3 (sent ${o.days[1] ?? 7} days later if no reply): a polite last note that makes saying no easy, under 60 words.
 LinkedIn note: under 280 characters.
 Follow-ups reply in the same thread, so their subject is "Re: " plus the first subject.
-Greet by first name when the contact name is known, otherwise greet the team. Sign with the sender's first name.
+Greet by first name when the contact name is known, otherwise greet the team. Sign with the sender's first name. If no sender name is given, end without a name; never invent one.
 Never invent offers, prices, trials, customers or results. No emoji, no hype, no em dashes. Do not add an unsubscribe line; the app adds it.
 
 Reply with only JSON:

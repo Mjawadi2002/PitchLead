@@ -200,9 +200,10 @@ export function ShowMore({ shown, total, step, onMore, noun }: { shown: number; 
 export const fmtTokens = (n: number) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n)
 
-/** Share of the current 5-hour window against the busiest window in the last 30 days. */
-export function usagePercent(u: { current: { tokens: number } | null; peakTokens: number } | null): number | null {
+/** The real 5-hour plan usage from Claude; before the first reply, an estimate against the busiest recent window. */
+export function usagePercent(u: { current: { tokens: number } | null; peakTokens: number; plan?: { fiveHour?: { pct: number } } } | null): number | null {
   if (!u) return null
+  if (u.plan?.fiveHour) return Math.min(100, u.plan.fiveHour.pct)
   if (!u.current) return 0
   if (!u.peakTokens) return null
   return Math.min(100, Math.round((u.current.tokens / u.peakTokens) * 100))

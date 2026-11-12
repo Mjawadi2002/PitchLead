@@ -10,6 +10,10 @@ import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from
 export function SettingsView() {
   const { data, claude, refreshClaude, toast, showOnboarding, usage, refreshUsage } = useApp()
   const pct = usagePercent(usage)
+  const [refreshing, setRefreshing] = useState(false)
+  const fiveEnd = usage?.plan?.fiveHour?.resetsAt || usage?.current?.end || 0
+  const week = usage?.plan?.sevenDay
+  const timeAgoShort = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : `${m} min ago` }
   const s = data.settings
   const set = (patch: Partial<Settings>) => window.lp.settings.update(patch)
   const setTb = (patch: Partial<TitlebarPrefs>) => set({ titlebar: { ...s.titlebar, ...patch } })
@@ -151,7 +155,7 @@ export function SettingsView() {
         </section>
 
         <section>
-          <h2 className="section-title">Claude usage<button className="more" onClick={refreshUsage}>Refresh</button></h2>
+          <h2 className="section-title">Claude usage<button className="more" disabled={refreshing} onClick={async () => { setRefreshing(true); await refreshUsage(true); setTimeout(() => setRefreshing(false), 1500) }}>{refreshing ? 'Checking' : 'Refresh'}</button></h2>
           <div className="card">
             {usage?.limitHit && (
               <div style={{ padding: '14px 18px 0' }}>
@@ -161,17 +165,27 @@ export function SettingsView() {
             <div className="usage-now">
               <div className="row">
                 <b>Current 5-hour window</b>
-                <span className="muted">{usage?.current ? `resets in ${resetsIn(usage.current.end)}, at ${new Date(usage.current.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'not started, it begins with your next Claude message'}</span>
+                <span className="muted">{fiveEnd ? `resets in ${resetsIn(fiveEnd)}, at ${new Date(fiveEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'not started, it begins with your next Claude message'}</span>
                 {pct !== null && <span className="num" style={{ marginLeft: 'auto', fontWeight: 600 }}>{pct}%</span>}
               </div>
               <Meter value={pct ?? 0} tone={usage?.limitHit ? 'neg' : (pct ?? 0) >= 85 ? 'warn' : ''} />
             </div>
+            {week && (
+              <div className="usage-now" style={{ paddingTop: 0 }}>
+                <div className="row">
+                  <b>This week</b>
+                  <span className="muted">{week.resetsAt ? `resets ${new Date(week.resetsAt).toLocaleDateString('en', { weekday: 'long' })} at ${new Date(week.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'all models'}</span>
+                  <span className="num" style={{ marginLeft: 'auto', fontWeight: 600 }}>{week.pct}%</span>
+                </div>
+                <Meter value={week.pct} tone={week.pct >= 85 ? 'warn' : ''} />
+              </div>
+            )}
             <div className="usage-grid">
               <div><span>This window</span><b className="num">{usage?.current ? fmtTokens(usage.current.tokens) : '0'}</b><span>tokens, {usage?.current?.messages ?? 0} replies</span></div>
               <div><span>LeadPitch share</span><b className="num">{usage?.current ? fmtTokens(usage.current.leadpitchTokens) : '0'}</b><span>tokens from research and drafts</span></div>
               <div><span>Last 7 days</span><b className="num">{fmtTokens(usage?.weekTokens ?? 0)}</b><span>tokens, {usage?.weekMessages ?? 0} replies</span></div>
             </div>
-            <p className="usage-note">Counted from Claude Code on this computer, including your own Claude Code sessions. Anthropic does not publish exact plan limits, so 100% is your busiest 5-hour window in the last 30 days. When Claude reports a real limit, it shows here and in the title bar.</p>
+            <p className="usage-note">{usage?.plan ? `Percentages are your real plan usage as Claude reports it, across all your Claude apps, checked ${timeAgoShort(usage.plan.at)}. Token counts come from Claude Code on this computer.` : 'Until Claude reports your plan usage, 100% is your busiest 5-hour window in the last 30 days, counted from Claude Code on this computer. Press Refresh for the real figure.'}</p>
           </div>
         </section>
 

@@ -65,7 +65,7 @@ const api = {
     return () => { ipcRenderer.removeListener('toast', h) }
   },
   usage: {
-    get: (): Promise<UsageReport> => ipcRenderer.invoke('usage:get')
+    get: (opts?: { refresh?: boolean }): Promise<UsageReport> => ipcRenderer.invoke('usage:get', opts)
   },
   memory: {
     stats: (): Promise<MemoryStats> => ipcRenderer.invoke('memory:stats'),

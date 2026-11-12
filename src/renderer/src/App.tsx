@@ -54,7 +54,8 @@ export function App() {
 
   // Claude usage from local session logs, refreshed every minute and when runs end.
   const [usage, setUsage] = useState<UsageReport | null>(null)
-  const refreshUsage = useCallback(() => { window.lp.usage.get().then(setUsage).catch(() => {}) }, [])
+  // Refresh asks Claude for the real figure now; other calls reuse it when it is less than 10 minutes old.
+  const refreshUsage = useCallback((force?: unknown) => { window.lp.usage.get(force === true ? { refresh: true } : undefined).then(setUsage).catch(() => {}) }, [])
   const runsKey = data ? data.runs.map((r) => r.status).join() : ''
   useEffect(() => {
     refreshUsage()

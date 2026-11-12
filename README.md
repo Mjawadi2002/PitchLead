@@ -25,8 +25,8 @@ Nothing paid is needed besides your Claude subscription.
 
 ### Projects
 
-Each project is one thing you sell: a product or a service, its description, and who buys it
-(industry, location, size, the problem it solves). Research runs use the project's details, and
+Each project is one thing you sell: a product or a service, its description, an optional logo,
+and who buys it (industry, location, size, the problem it solves). Research runs use the project's details, and
 every screen (Today, Leads, Pipeline, Outreach, the filters) shows only the selected project, or
 everything under "All projects". Switch projects from the top of the sidebar or with Ctrl K.
 

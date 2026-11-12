@@ -6,6 +6,7 @@ import {
 import { BATCH_SIZE, DEFAULT_INPUT, MAX_LEADS, PHASES, PROJECT_COLORS, type ResearchInput, type Run, type RunEvent } from '@shared/types'
 import { spring, useApp } from '../state'
 import { Empty, ShowMore, Switch, mod, timeAgo } from '../components/ui'
+import { ProjectMark } from '../components/ProjectMark'
 
 const KIND_ICON: Record<RunEvent['kind'], JSX.Element> = {
   phase: <ArrowRight size={13} />,
@@ -121,7 +122,7 @@ export function Research() {
       <div className="research">
         <form className="card form" onSubmit={(e) => { e.preventDefault(); start() }}>
           <div className="project-banner">
-            <span className="proj-sq sm" style={{ background: PROJECT_COLORS[(target?.color ?? 0) % PROJECT_COLORS.length] }}>{(target?.name ?? 'P').slice(0, 1).toUpperCase()}</span>
+            {target && <ProjectMark project={target} size={24} />}
             {project ? (
               <span className="grow">Leads go to <b>{project.name}</b>. Changes below are saved to the project when you start.</span>
             ) : (

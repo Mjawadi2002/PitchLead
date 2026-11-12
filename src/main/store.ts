@@ -18,6 +18,14 @@ interface Data {
   mailPassword?: string // encrypted with safeStorage, base64
 }
 
+/** A short project name from a product description: "Saleside is an AI coach..." gives "Saleside". */
+export function shortName(product: string): string {
+  const first = product.trim().split('\n')[0]
+  const head = first.split(/:|\s[-–—]\s|\s(?:is|are|helps|lets|makes|est|aide)\s|,|\./i)[0].trim()
+  const words = head.split(/\s+/).filter(Boolean).slice(0, 3).join(' ')
+  return words.slice(0, 28).trim() || 'My first project'
+}
+
 /** Live mailbox state, kept in memory and sent with every snapshot. */
 export const mailStatus: MailStatus = { connected: false, sentToday: 0 }
 
@@ -52,13 +60,18 @@ export function loadStore(): void {
     if (!data.projects.length && (data.leads.length || data.runs.length)) {
       const li = data.settings.lastInput
       const p: Project = {
-        id: randomUUID(), name: li?.product ? li.product.split(/[:.\n]/)[0].trim().slice(0, 40) || 'My first project' : 'My first project',
+        id: randomUUID(), name: li?.product ? shortName(li.product) : 'My first project',
         offerType: 'product', product: li?.product ?? '', folder: li?.folder ?? '', industry: li?.industry ?? '', location: li?.location ?? '',
         size: li?.size ?? '', pains: li?.pains ?? '', tech: li?.tech ?? '', color: 0, createdAt: Date.now()
       }
       data.projects.push(p)
       for (const l of data.leads) l.projectId ??= p.id
       for (const r of data.runs) r.projectId ??= p.id
+    }
+    // Projects named by the first version of the migration got the whole first sentence; shorten those.
+    for (const p of data.projects) {
+      const legacy = p.product.split(/[:.\n]/)[0].trim().slice(0, 40)
+      if (p.product && p.name === legacy && p.name.length > 24) p.name = shortName(p.product)
     }
     data.outbox ??= []
     data.usageLog ??= []

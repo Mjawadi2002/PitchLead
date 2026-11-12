@@ -1,9 +1,10 @@
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { FolderOpen, Trash, X } from '@phosphor-icons/react'
+import { Camera, FolderOpen, Trash, X } from '@phosphor-icons/react'
 import { PROJECT_COLORS, type Project } from '@shared/types'
 import { spring, useApp } from '../state'
 import { Seg } from './ui'
+import { ProjectMark, imageToIcon } from './ProjectMark'
 
 type Draft = Omit<Project, 'id' | 'createdAt' | 'color'>
 
@@ -17,6 +18,12 @@ export function ProjectModal({ id, onClose }: { id: string; onClose: () => void 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<Draft>) => setF((x) => ({ ...x, ...patch }))
+  const [dragging, setDragging] = useState(false)
+  const [iconError, setIconError] = useState('')
+  const pickIcon = async (file: File) => {
+    setIconError('')
+    try { set({ icon: await imageToIcon(file) }) } catch (e) { setIconError((e as Error).message) }
+  }
   const leadCount = existing ? allData.leads.filter((l) => l.projectId === existing.id).length : 0
   const ready = f.name.trim().length > 1 && (f.product.trim().length > 8 || !!f.folder)
 
@@ -55,10 +62,24 @@ export function ProjectModal({ id, onClose }: { id: string; onClose: () => void 
         onSubmit={(e) => { e.preventDefault(); save() }}
       >
         <div className="pm-head">
-          <span className="pm-swatch" style={{ background: PROJECT_COLORS[existing?.color ?? allData.projects.length % PROJECT_COLORS.length] }} />
-          <div style={{ flex: 1 }}>
+          <label
+            className={`pm-logo ${dragging ? 'drag' : ''}`}
+            title={f.icon ? 'Change the logo' : 'Add a logo'}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files[0]; if (file) pickIcon(file) }}
+          >
+            <ProjectMark project={{ name: f.name || 'P', color: existing?.color ?? allData.projects.length % PROJECT_COLORS.length, icon: f.icon }} size={56} />
+            <span className="pm-logo-edit" aria-hidden><Camera size={13} weight="bold" /></span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" hidden aria-label="Project logo" onChange={(e) => { const file = e.target.files?.[0]; if (file) pickIcon(file); e.target.value = '' }} />
+          </label>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h2>{existing ? 'Edit project' : 'New project'}</h2>
             <p>{existing ? 'Changes apply to the next research run.' : 'One project per thing you sell. Each has its own leads, pipeline and outreach.'}</p>
+            <p className="pm-logo-hint">
+              {f.icon ? <>Logo added. <button type="button" className="link-like" onClick={() => set({ icon: '' })}>Remove</button></> : 'Click the square or drop an image to add a logo.'}
+              {iconError && <span style={{ color: 'var(--neg)' }}> {iconError}</span>}
+            </p>
           </div>
           <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}><X size={15} /></button>
         </div>

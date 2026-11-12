@@ -25,6 +25,8 @@ export interface Project {
   tech: string
   /** Index into the project colour list. */
   color: number
+  /** Optional logo: a small square PNG as a data URL. */
+  icon?: string
   createdAt: number
 }
 

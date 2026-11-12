@@ -148,3 +148,114 @@ Only report details you actually saw published. Never guess an email from a name
 Reply with only a JSON object:
 {"email": "", "phone": "", "contactName": "", "contactUrl": "", "linkedin": "", "website": ""}`
 }
+
+// ---------- Fast engine ----------
+
+function icpLines(input: ResearchInput): string {
+  return [
+    `Product: ${input.product.trim() || '(not described)'}`,
+    input.industry && `Industry: ${input.industry}`,
+    input.location && `Location: ${input.location}`,
+    input.size && `Company size: ${input.size}`,
+    input.pains && `Pain points it solves: ${input.pains}`,
+    input.tech && `Tools they use: ${input.tech}`,
+    input.extra && `Notes: ${input.extra}`
+  ].filter(Boolean).join('\n')
+}
+
+/** Web search only, no page reading: a short list of real companies. */
+export function webListPrompt(input: ResearchInput, count: number, exclude: string[], angle?: string): string {
+  return `List ${count} real companies that could buy this product.
+
+${icpLines(input)}
+${angle ? `\nSearch mainly through this angle so results differ from other lists: ${angle}.` : ''}
+${exclude.length ? `\nSkip these, they are already known: ${exclude.slice(0, 250).join(', ')}` : ''}
+
+Use web search results only. Do not open pages. Only list companies you saw in results; never invent one.
+Reply with only a JSON array, no prose:
+[{"name": "", "website": "https://... or empty", "location": "", "category": "", "phone": "or empty", "note": "what the result said, under 15 words"}]`
+}
+
+/** Fills in websites and phones for known names, from search results. */
+export function lookupPrompt(items: { id: number; name: string; location: string; category: string }[]): string {
+  return `For each business below, find its official website, phone number and main social page from web search results.
+Use web search only and do not open pages. Only report what you saw in results. Use empty strings when unsure; a wrong website is worse than none.
+
+${JSON.stringify(items)}
+
+Reply with only a JSON array in the same order:
+[{"id": 0, "website": "", "phone": "", "social": "", "note": "anything useful from the results, under 15 words"}]`
+}
+
+/** Bulk fit scoring from compact facts, no tools. */
+export function scorePrompt(input: ResearchInput, candidates: unknown[]): string {
+  return `You qualify sales leads. Score how well each company fits the product, using only the facts given.
+
+${icpLines(input)}
+
+Rules:
+- Score fit 1 to 10. 8 to 10 only when the facts show a clear reason to buy now. Chains and franchises usually decide centrally: score them lower unless the product suits that.
+- "signal" must come from the facts given (a review note, missing online ordering, a booking tool, a job post in the note). If there is none, write a short honest observation instead and keep the score at 7 or below.
+- Never invent facts, people, numbers or events.
+- Plain, direct English. No emoji. No em dashes.
+
+Companies:
+${JSON.stringify(candidates)}
+
+Reply with only a JSON array, one object per company, same ids:
+[{"id": 0, "score": 7, "scoreReason": "one sentence", "decisionMaker": "role to contact", "signal": "under 14 words", "why": ["two short reasons"], "valueProp": "one sentence", "strategy": "one sentence", "starters": ["two opening lines"]}]`
+}
+
+/** Deep research on one company, with web tools. */
+export function deepPrompt(lead: { name: string; website: string; location: string; industry: string }, input: ResearchInput | null): string {
+  return `Research this company in depth as a sales lead.
+
+Company: ${lead.name}
+Website: ${lead.website || 'unknown'}
+Location: ${lead.location || 'unknown'}
+Industry: ${lead.industry || 'unknown'}
+${input ? `\n${icpLines(input)}\n` : ''}
+Find: one concrete recent sign of need (job post, opening, review pattern, launch, funding), the person in the decision-maker role and their name if published, and published contact details. Only report what you actually saw. Never guess emails.
+
+Reply with only a JSON object:
+{"score": 8, "scoreReason": "", "signal": "under 14 words", "decisionMaker": "", "contactName": "", "email": "", "phone": "", "contactUrl": "", "linkedin": "", "why": [""], "valueProp": "", "strategy": "", "starters": ["", ""]}`
+}
+
+export function meetingPrompt(lead: Lead, product: string, sender: string): string {
+  return `Write a short meeting brief for a sales call.
+
+Seller: ${sender || 'the founder'}
+Product: ${product || 'see the value below'}
+Lead: ${JSON.stringify({ company: lead.name, website: lead.website, location: lead.location, industry: lead.industry, size: lead.size, contact: lead.contactName || lead.decisionMaker, signal: lead.signal, why: lead.why, valueProp: lead.valueProp, notes: lead.notes })}
+
+Use these headings, plain text, short bullet points, no emoji:
+Goal of the call
+What we know
+Questions to ask
+What to show
+Likely objections and answers (three to five)
+Next step to propose
+
+Base everything on the facts given. Where you are guessing, say "Check:" before it. Under 300 words.`
+}
+
+export function sequencePrompt(o: { lead: Lead; product: string; sender: string; lang: Lang; days: number[]; optOut: string }): string {
+  const LANG: Record<Lang, string> = { en: 'English', fr: 'French', ar: 'Arabic' }
+  return `Write a cold email sequence and a LinkedIn note for this lead.
+
+Language: ${LANG[o.lang]}
+Sender: ${o.sender || 'the founder'}
+Product: ${o.product || 'see the value proposition below'}
+Lead: ${JSON.stringify({ company: o.lead.name, contact: o.lead.contactName || '', role: o.lead.decisionMaker, location: o.lead.location, signal: o.lead.signal, why: o.lead.why, valueProp: o.lead.valueProp, strategy: o.lead.strategy, starters: o.lead.starters })}
+
+Email 1: open with the signal, one clear ask, 60 to 110 words, subject under 8 words.
+Email 2 (sent ${o.days[0] ?? 3} days later if no reply): a short bump that adds one new useful point, under 70 words.
+Email 3 (sent ${o.days[1] ?? 7} days later if no reply): a polite last note that makes saying no easy, under 60 words.
+LinkedIn note: under 280 characters.
+Follow-ups reply in the same thread, so their subject is "Re: " plus the first subject.
+Greet by first name when the contact name is known, otherwise greet the team. Sign with the sender's first name.
+Never invent offers, prices, trials, customers or results. No emoji, no hype, no em dashes. Do not add an unsubscribe line; the app adds it.
+
+Reply with only JSON:
+{"emails": [{"subject": "", "body": ""}, {"subject": "", "body": ""}, {"subject": "", "body": ""}], "linkedin": ""}`
+}

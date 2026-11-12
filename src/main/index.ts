@@ -4,7 +4,9 @@ import { writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Draft, Lead, ResearchInput, Settings } from '@shared/types'
 import { ask, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
-import { contactPrompt, draftPrompt } from './prompts'
+import { contactPrompt, draftPrompt, meetingPrompt, sequencePrompt } from './prompts'
+import { deepen } from './fast'
+import { cancelOutbox, checkReplies, queueSequence, sendTest, startMail, stopMail, testMailbox } from './mail'
 import { noteLimit, usageReport } from './usage'
 import { cancelAll, cancelRun, startRun } from './research'
 import { db, flushNow, loadStore, save } from './store'
@@ -106,11 +108,12 @@ function registerIpc(): void {
     notify()
   })
 
-  ipcMain.handle('draft:generate', async (_e, o: { leadId: string; channel: Draft['channel']; lang: Draft['lang']; instruction?: string }) => {
+  ipcMain.handle('draft:generate', async (_e, o: { leadId: string; channel: Draft['channel']; lang: Draft['lang']; instruction?: string; step?: number }) => {
     const d = db.get()
     const lead = d.leads.find((l) => l.id === o.leadId)
     if (!lead) throw new Error('This lead no longer exists.')
-    const existing = d.drafts.find((x) => x.leadId === o.leadId && x.channel === o.channel && x.lang === o.lang)
+    const step = o.step ?? 0
+    const existing = d.drafts.find((x) => x.leadId === o.leadId && x.channel === o.channel && x.lang === o.lang && (x.step ?? 0) === step)
     const product = d.runs.find((r) => r.id === lead.runId)?.input.product ?? d.settings.lastInput?.product ?? ''
     try {
       const text = await ask({
@@ -125,7 +128,8 @@ function registerIpc(): void {
         leadId: lead.id,
         channel: o.channel,
         lang: o.lang,
-        subject: String(j?.subject ?? '').trim(),
+        step,
+        subject: String(j?.subject ?? '').trim() || existing?.subject || '',
         body: String(j?.body ?? text).trim(),
         updatedAt: Date.now()
       }
@@ -197,8 +201,10 @@ function registerIpc(): void {
   // Settings
   ipcMain.handle('settings:update', (_e, patch: Partial<Settings>) => {
     const s = db.get().settings
+    const prevMail = s.mail
     Object.assign(s, patch)
     if (patch.titlebar) s.titlebar = { ...s.titlebar, ...patch.titlebar }
+    if (patch.mail) s.mail = { ...prevMail, ...patch.mail }
     if (patch.theme) nativeTheme.themeSource = patch.theme
     save()
     notify()
@@ -238,22 +244,100 @@ function registerIpc(): void {
     })
     return r.canceled ? null : r.filePaths[0]
   })
-  ipcMain.handle('export:csv', async (_e, ids: string[]) => {
+  ipcMain.handle('export:csv', async (_e, ids: string[], format: 'full' | 'outreach' = 'full') => {
     const leads = db.get().leads.filter((l) => ids.includes(l.id))
     const r = await dialog.showSaveDialog(win!, {
-      title: 'Export leads',
-      defaultPath: `leadpitch-leads-${new Date().toISOString().slice(0, 10)}.csv`,
+      title: format === 'outreach' ? 'Export for Instantly or Smartlead' : 'Export leads',
+      defaultPath: `leadpitch-${format === 'outreach' ? 'outreach' : 'leads'}-${new Date().toISOString().slice(0, 10)}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (r.canceled || !r.filePath) return null
-    const cols: (keyof Lead)[] = ['name', 'website', 'industry', 'size', 'location', 'score', 'scoreReason', 'decisionMaker', 'contactName', 'email', 'phone', 'contactUrl', 'linkedin', 'signal', 'why', 'valueProp', 'strategy', 'starters', 'stage', 'notes']
     const cell = (v: unknown) => {
       const s = Array.isArray(v) ? v.join(' | ') : String(v ?? '')
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
     }
-    const csv = [cols.join(','), ...leads.map((l) => cols.map((c) => cell(l[c])).join(','))].join('\r\n')
+    let csv: string
+    if (format === 'outreach') {
+      // Column names Instantly and Smartlead recognise without mapping; the rest arrive as custom variables.
+      const cols = ['email', 'first_name', 'last_name', 'company', 'title', 'website', 'linkedin_url', 'phone', 'location', 'signal', 'reason', 'opener', 'score']
+      const rows = leads.map((l) => {
+        const [first = '', ...rest] = (l.contactName || '').split(/\s+/)
+        return [l.email, first, rest.join(' '), l.name, l.decisionMaker, l.website, l.linkedin, l.phone, l.location, l.signal, l.scoreReason, l.starters[0] ?? '', l.score]
+      })
+      csv = [cols.join(','), ...rows.map((row) => row.map(cell).join(','))].join('\r\n')
+    } else {
+      const cols: (keyof Lead)[] = ['name', 'website', 'industry', 'size', 'location', 'address', 'score', 'scoreReason', 'decisionMaker', 'contactName', 'email', 'phone', 'contactUrl', 'linkedin', 'socials', 'tech', 'source', 'signal', 'why', 'valueProp', 'strategy', 'starters', 'stage', 'notes']
+      csv = [cols.join(','), ...leads.map((l) => cols.map((c) => cell(l[c])).join(','))].join('\r\n')
+    }
     writeFileSync(r.filePath, '﻿' + csv, 'utf8')
     return r.filePath
+  })
+
+  // ---------- Mail ----------
+  ipcMain.handle('mail:setPassword', (_e, pw: string | null) => {
+    db.setMailPassword(pw?.replace(/\s+/g, '') || null)
+    notify()
+  })
+  ipcMain.handle('mail:test', () => testMailbox())
+  ipcMain.handle('mail:sendTest', () => sendTest())
+  ipcMain.handle('mail:queue', (_e, o: Parameters<typeof queueSequence>[0]) => queueSequence(o).then((r) => { notify(); return r }))
+  ipcMain.handle('mail:cancel', (_e, ids: string[]) => { cancelOutbox(ids); notify() })
+  ipcMain.handle('mail:checkReplies', () => checkReplies().then((r) => { notify(); return r }))
+
+  // ---------- Sequences, deep research, meeting briefs ----------
+  const leadProduct = (lead: Lead) => db.get().runs.find((r) => r.id === lead.runId)?.input.product ?? db.get().settings.lastInput?.product ?? ''
+  const claudeError = (e: unknown) => {
+    const msg = (e as Error).message
+    if (LIMIT_ERROR.test(msg)) noteLimit(msg)
+    return new Error(AUTH_ERROR.test(msg) ? `AUTH: ${msg}` : msg)
+  }
+  ipcMain.handle('draft:sequence', async (_e, o: { leadId: string; lang: Draft['lang'] }) => {
+    const d = db.get()
+    const lead = d.leads.find((l) => l.id === o.leadId)
+    if (!lead) throw new Error('This lead no longer exists.')
+    let text: string
+    try {
+      text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: sequencePrompt({ lead, product: leadProduct(lead), sender: d.settings.mail.fromName || d.settings.senderName, lang: o.lang, days: d.settings.mail.followUpDays, optOut: d.settings.mail.optOutLine }), model: 'sonnet', timeoutMs: 180000 })
+    } catch (e) {
+      throw claudeError(e)
+    }
+    const j = extractJson<{ emails?: { subject?: string; body?: string }[]; linkedin?: string }>(text)
+    if (!j?.emails?.length) throw new Error('Claude returned no sequence. Try again.')
+    const put = (channel: Draft['channel'], step: number, subject: string, body: string) => {
+      const existing = d.drafts.find((x) => x.leadId === lead.id && x.channel === channel && x.lang === o.lang && (x.step ?? 0) === step)
+      const draft: Draft = { id: existing?.id ?? randomUUID(), leadId: lead.id, channel, lang: o.lang, step, subject, body, updatedAt: Date.now() }
+      if (existing) Object.assign(existing, draft)
+      else d.drafts.push(draft)
+    }
+    j.emails.slice(0, 3).forEach((m, i) => put('email', i, String(m.subject ?? '').trim(), String(m.body ?? '').trim()))
+    if (j.linkedin) put('linkedin', 0, '', String(j.linkedin).trim())
+    save()
+    notify()
+  })
+  ipcMain.handle('lead:deepen', async (_e, id: string) => {
+    const d = db.get()
+    const lead = d.leads.find((l) => l.id === id)
+    if (!lead) throw new Error('This lead no longer exists.')
+    try {
+      await deepen(lead, d.runs.find((r) => r.id === lead.runId)?.input ?? d.settings.lastInput, d.settings, db.getApiKey())
+    } catch (e) {
+      throw claudeError(e)
+    }
+    save()
+    notify()
+  })
+  ipcMain.handle('lead:meeting', async (_e, id: string) => {
+    const d = db.get()
+    const lead = d.leads.find((l) => l.id === id)
+    if (!lead) throw new Error('This lead no longer exists.')
+    try {
+      lead.meetingBrief = (await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: meetingPrompt(lead, leadProduct(lead), d.settings.senderName), model: 'sonnet', timeoutMs: 180000 })).trim()
+    } catch (e) {
+      throw claudeError(e)
+    }
+    lead.updatedAt = Date.now()
+    save()
+    notify()
   })
   ipcMain.handle('shell:open', (_e, url: string) => {
     if (/^(https?:\/\/|mailto:|tel:)/.test(url)) return shell.openExternal(url)
@@ -266,8 +350,9 @@ app.whenReady().then(() => {
   nativeTheme.themeSource = db.get().settings.theme
   registerIpc()
   createWindow()
+  startMail({ notify, toast: (text) => win?.webContents.send('toast', text) })
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 
-app.on('before-quit', () => { cancelAll(); flushNow() })
+app.on('before-quit', () => { cancelAll(); stopMail(); flushNow() })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

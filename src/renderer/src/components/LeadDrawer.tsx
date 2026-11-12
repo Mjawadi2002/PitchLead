@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowSquareOut, Copy, EnvelopeSimple, Globe, IdentificationCard, LinkedinLogo, MagnifyingGlass, PaperPlaneTilt, Phone, Star, Trash, User, X } from '@phosphor-icons/react'
+import { ArrowSquareOut, CalendarCheck, Copy, EnvelopeSimple, Globe, IdentificationCard, InstagramLogo, FacebookLogo, LinkedinLogo, MagnifyingGlass, MapPin, PaperPlaneTilt, Phone, Prohibit, Star, Trash, User, X } from '@phosphor-icons/react'
 import { STAGES, type Lead, type Stage } from '@shared/types'
 import { spring, useApp } from '../state'
 import { hostOf, initials } from './ui'
@@ -44,6 +44,17 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
     }
   }
   const [finding, setFinding] = useState(false)
+  const [deepening, setDeepening] = useState(false)
+  const [briefing, setBriefing] = useState(false)
+  const errText = (e: unknown) => { const m = (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); return m.startsWith('AUTH:') ? 'Sign in to Claude again in Settings' : m }
+  const deepenLead = async () => {
+    setDeepening(true)
+    try { await window.lp.leads.deepen(lead.id); toast(`${lead.name} researched in depth`) } catch (e) { toast(errText(e)) } finally { setDeepening(false) }
+  }
+  const brief = async () => {
+    setBriefing(true)
+    try { await window.lp.leads.meeting(lead.id) } catch (e) { toast(errText(e)) } finally { setBriefing(false) }
+  }
   const findContact = async () => {
     setFinding(true)
     try {
@@ -60,6 +71,7 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
     lead.contactName && { icon: <User size={15} />, label: 'Contact', value: `${lead.contactName}${lead.decisionMaker ? `, ${lead.decisionMaker}` : ''}` },
     lead.contactUrl && { icon: <IdentificationCard size={15} />, label: 'Contact page', value: hostOf(lead.contactUrl), href: lead.contactUrl, copy: lead.contactUrl },
     lead.website && { icon: <Globe size={15} />, label: 'Website', value: hostOf(lead.website), href: lead.website, copy: lead.website },
+    ...(lead.socials ?? []).filter((u) => /facebook|instagram/i.test(u) && u !== lead.website).slice(0, 2).map((u) => ({ icon: /instagram/i.test(u) ? <InstagramLogo size={15} /> : <FacebookLogo size={15} />, label: /instagram/i.test(u) ? 'Instagram' : 'Facebook', value: u.replace(/^https?:\/\/(www\.|m\.|web\.)?/, '').slice(0, 60), href: u, copy: u })),
     lead.linkedin && { icon: <LinkedinLogo size={15} />, label: 'LinkedIn', value: lead.linkedin.replace(/^https?:\/\/(www\.)?/, ''), href: lead.linkedin, copy: lead.linkedin }
   ].filter(Boolean) as { icon: JSX.Element; label: string; value: string; href?: string; copy?: string }[]
   const hasDirect = !!(lead.email || lead.phone || lead.contactUrl)
@@ -131,6 +143,15 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
           <div><span>Location</span><b>{lead.location || 'Unknown'}</b></div>
           <div><span>Decision maker</span><b>{lead.decisionMaker || 'Unknown'}</b></div>
         </div>
+        {(lead.source || lead.tech?.length || lead.deepResearched) && (
+          <div className="chips-row">
+            {lead.source === 'map' && <span className="tag-chip"><MapPin size={12} />From the map</span>}
+            {lead.source === 'web' && <span className="tag-chip"><Globe size={12} />From a web list</span>}
+            {lead.deepResearched && <span className="tag-chip accent"><MagnifyingGlass size={12} />Researched in depth</span>}
+            {lead.doNotContact && <span className="tag-chip warn"><Prohibit size={12} />Do not contact</span>}
+            {lead.tech?.map((t) => <span key={t} className="tag-chip">{t}</span>)}
+          </div>
+        )}
 
         <div className="d-sec">
           <h3>Contact</h3>
@@ -150,6 +171,12 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
             )}
           </div>
         </div>
+        {!lead.deepResearched && (
+          <div className="deep-cta">
+            <span>Want a fresher signal and the decision maker's name? Claude can research this company on the web.</span>
+            <button className="btn btn-ghost" disabled={deepening} onClick={deepenLead}><MagnifyingGlass size={13} />{deepening ? 'Researching, about a minute' : 'Research deeper'}</button>
+          </div>
+        )}
         {lead.signal && <div className="d-sec"><h3>Signal</h3><p>{lead.signal}</p></div>}
         {lead.why.length > 0 && <div className="d-sec"><h3>Why they fit</h3><ul>{lead.why.map((w, i) => <li key={i}>{w}</li>)}</ul></div>}
         {lead.valueProp && <div className="d-sec"><h3>Value for them</h3><p>{lead.valueProp}</p></div>}
@@ -165,6 +192,25 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+        {(lead.stage === 'meeting' || lead.stage === 'replied' || lead.meetingBrief) && (
+          <div className="d-sec">
+            <h3><CalendarCheck size={13} />Meeting brief</h3>
+            {lead.meetingBrief ? (
+              <>
+                <div className="brief selectable">{lead.meetingBrief}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <button className="btn btn-plain" onClick={() => copy(lead.meetingBrief!)}><Copy size={13} />Copy</button>
+                  <button className="btn btn-plain" disabled={briefing} onClick={brief}>{briefing ? 'Writing' : 'Rewrite'}</button>
+                </div>
+              </>
+            ) : (
+              <div className="deep-cta">
+                <span>Goals, questions to ask, what to show, and answers to likely objections.</span>
+                <button className="btn btn-ghost" disabled={briefing} onClick={brief}>{briefing ? 'Writing' : 'Prepare brief'}</button>
+              </div>
+            )}
           </div>
         )}
         <div className="d-sec">

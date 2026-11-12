@@ -28,6 +28,10 @@ export function App() {
   const [onboarding, setOnboarding] = useState(false)
   const [toastState, setToastState] = useState<{ id: number; text: string; opts?: ToastOpts } | null>(null)
   const toastTimer = useRef<number>()
+  const toastRef = useRef<((text: string, opts?: ToastOpts) => void) | null>(null)
+
+  // Messages from the mail system (replies, bounces) appear as toasts.
+  useEffect(() => window.lp.onToast((t) => toastRef.current?.(t, { ms: 6000 })), [])
 
   // Narrow windows fold the sidebar to icons without changing the saved preference.
   const [narrow, setNarrow] = useState(() => window.innerWidth < 1000)
@@ -74,6 +78,8 @@ export function App() {
     setToastState({ id: Date.now(), text, opts })
     toastTimer.current = window.setTimeout(() => setToastState(null), opts?.ms ?? (opts?.action ? 5000 : 2400))
   }, [])
+
+  toastRef.current = toast
 
   const go = useCallback<AppCtx['go']>((v, opts) => {
     setView(v)

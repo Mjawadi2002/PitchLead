@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowsClockwise, Key, TerminalWindow } from '@phosphor-icons/react'
 import type { Settings, TitlebarPrefs } from '@shared/types'
 import { useApp } from '../state'
+import { MailSection } from '../components/MailSection'
 import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from '../components/ui'
 
 export function SettingsView() {
@@ -150,6 +151,8 @@ export function SettingsView() {
             <p className="usage-note">Counted from Claude Code on this computer, including your own Claude Code sessions. Anthropic does not publish exact plan limits, so 100% is your busiest 5-hour window in the last 30 days. When Claude reports a real limit, it shows here and in the title bar.</p>
           </div>
         </section>
+
+        <MailSection />
 
         <section>
           <h2 className="section-title">Outreach</h2>

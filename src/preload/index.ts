@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ClaudeStatus, Draft, Lead, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
+import type { ClaudeStatus, Draft, Lang, Lead, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
 
 const api = {
   platform: process.platform,
@@ -26,12 +26,15 @@ const api = {
     update: (id: string, patch: Partial<Lead>): Promise<void> => ipcRenderer.invoke('lead:update', id, patch),
     add: (partial: Partial<Lead>): Promise<string> => ipcRenderer.invoke('lead:add', partial),
     remove: (ids: string[]): Promise<void> => ipcRenderer.invoke('lead:delete', ids),
-    exportCsv: (ids: string[]): Promise<string | null> => ipcRenderer.invoke('export:csv', ids),
+    exportCsv: (ids: string[], format: 'full' | 'outreach' = 'full'): Promise<string | null> => ipcRenderer.invoke('export:csv', ids, format),
+    deepen: (id: string): Promise<void> => ipcRenderer.invoke('lead:deepen', id),
+    meeting: (id: string): Promise<void> => ipcRenderer.invoke('lead:meeting', id),
     findContact: (ids: string[]): Promise<{ found: number; failed: string }> => ipcRenderer.invoke('lead:findContact', ids)
   },
   drafts: {
+    sequence: (o: { leadId: string; lang: Lang }): Promise<void> => ipcRenderer.invoke('draft:sequence', o),
     save: (d: Draft): Promise<void> => ipcRenderer.invoke('draft:save', d),
-    generate: (o: { leadId: string; channel: Draft['channel']; lang: Draft['lang']; instruction?: string }): Promise<Draft> =>
+    generate: (o: { leadId: string; channel: Draft['channel']; lang: Draft['lang']; instruction?: string; step?: number }): Promise<Draft> =>
       ipcRenderer.invoke('draft:generate', o)
   },
   research: {
@@ -42,6 +45,19 @@ const api = {
   settings: {
     update: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:update', patch),
     setApiKey: (key: string | null): Promise<void> => ipcRenderer.invoke('apikey:set', key)
+  },
+  mail: {
+    setPassword: (pw: string | null): Promise<void> => ipcRenderer.invoke('mail:setPassword', pw),
+    test: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('mail:test'),
+    sendTest: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('mail:sendTest'),
+    queue: (o: { leadId: string; lang: Lang; steps: { subject: string; body: string }[]; sendNow?: boolean }): Promise<{ queued: number }> => ipcRenderer.invoke('mail:queue', o),
+    cancel: (ids: string[]): Promise<void> => ipcRenderer.invoke('mail:cancel', ids),
+    checkReplies: (): Promise<{ replies: number; bounces: number }> => ipcRenderer.invoke('mail:checkReplies')
+  },
+  onToast: (cb: (text: string) => void) => {
+    const h = (_: unknown, t: string) => cb(t)
+    ipcRenderer.on('toast', h)
+    return () => { ipcRenderer.removeListener('toast', h) }
   },
   usage: {
     get: (): Promise<UsageReport> => ipcRenderer.invoke('usage:get')

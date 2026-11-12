@@ -7,11 +7,14 @@ import { BATCH_SIZE, MAX_LEADS, PHASES } from '@shared/types'
 import { AUTH_ERROR, LIMIT_ERROR, extractJson, killTree, readIfExists, resolveClaude, spawnClaude, writeText } from './claude'
 import { researchSystemPrompt, researchUserPrompt } from './prompts'
 import { db, save } from './store'
-import { noteLimit } from './usage'
+import { noteLimit, recordUsage } from './usage'
+import { runFast } from './fast'
 
 /** Every Claude Code session a run has open, so Stop can end all of them. */
 const children = new Map<string, Set<ChildProcess>>()
 const running = new Set<string>()
+/** Fast-engine runs are cancelled through an AbortSignal shared by every step. */
+const aborts = new Map<string, AbortController>()
 
 /** Different search angles keep parallel batches from finding the same companies. */
 const ANGLES = [
@@ -52,6 +55,7 @@ export function cancelRun(id: string): void {
     save()
   }
   for (const c of children.get(id) ?? []) killTree(c)
+  aborts.get(id)?.abort()
 }
 
 interface BatchResult {
@@ -119,6 +123,44 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
   const stopped = () => run.status === 'cancelled'
   // Overall phase shown in the UI: the furthest phase any batch has reached.
   const syncPhase = () => { run.phase = Math.max(0, ...(run.batchStates ?? []).map((b) => b.phase)) }
+
+  if ((input.engine ?? 'fast') === 'fast') {
+    run.batches = 1
+    run.batchStates = undefined
+    run.stages = [
+      { key: 'find', label: 'Find companies', status: 'waiting', detail: 'Map listings, then web search if needed' },
+      { key: 'read', label: 'Read their websites', status: 'waiting', detail: 'Emails, phones and details, no Claude needed' },
+      { key: 'score', label: 'Score fit', status: 'waiting', detail: '20 companies per Claude call' },
+      { key: 'deep', label: 'Deep research on top fits', status: 'waiting', detail: input.deepTop ? 'Leads scoring 8 or more' : 'Off for this run' }
+    ]
+    const ctrl = new AbortController()
+    aborts.set(run.id, ctrl)
+    push({ kind: 'note', text: settings.mode === 'apikey' ? 'Started with your API key' : 'Started with your Claude subscription' })
+    ;(async () => {
+      let res: { error?: string; warning?: string } = {}
+      try {
+        res = await runFast({
+          run, input: run.input, settings, apiKey, existing: [...data.leads], target, signal: ctrl.signal, push, notify,
+          addLead: (l) => { data.leads.push(l); run.leadIds.push(l.id); save() }
+        })
+      } catch (e) {
+        res = { error: (e as Error).message }
+      }
+      running.delete(run.id)
+      children.delete(run.id)
+      aborts.delete(run.id)
+      run.finishedAt = Date.now()
+      // A step that was cut short by an error or Stop is shown as stopped, not running.
+      for (const st of run.stages ?? []) if (st.status === 'running' || (st.status === 'waiting' && (res.error || stopped()))) { st.status = 'skipped'; st.detail = st.status === 'skipped' && res.error ? 'Stopped by an error' : 'Stopped' }
+      if (!stopped()) {
+        if (res.error && run.leadIds.length === 0) { run.status = 'failed'; run.error = res.error }
+        else { run.status = 'done'; run.phase = PHASES.length; if (res.error) run.warning = res.error.replace(/^AUTH:\s*/, ''); else if (res.warning) run.warning = res.warning }
+      }
+      save(true)
+      notify()
+    })()
+    return run.id
+  }
 
   /** Adds leads from one batch, skipping any company already known. Shared by all batches. */
   const addLeads = (parsed: LeadsFile, state: BatchState): number => {
@@ -225,7 +267,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
             }
           }
         }
-        if (j.type === 'result') result = j
+        if (j.type === 'result') { result = j; recordUsage(j.usage) }
       }
 
       child.stdout?.setEncoding('utf8')

@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { createInterface } from 'readline'
 import type { UsageReport, UsageWindow } from '@shared/types'
+import { db, save } from './store'
 
 /**
  * Claude usage from Claude Code's own session logs (~/.claude/projects/**.jsonl).
@@ -18,6 +19,18 @@ const WINDOW = 5 * 3600_000
 const DAY = 24 * 3600_000
 const cache = new Map<string, { mtime: number; size: number; entries: Entry[] }>()
 let limitHit: { at: number; message: string } | undefined
+
+/** Records the tokens of one Claude reply that LeadPitch made (from the result's usage block). */
+export function recordUsage(u: any): void {
+  if (!u) return
+  const tokens = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0)
+  if (!tokens) return
+  const log = db.get().usageLog
+  log.push({ t: Date.now(), tokens })
+  const cutoff = Date.now() - 31 * DAY
+  while (log.length && log[0].t < cutoff) log.shift()
+  save()
+}
 
 export function noteLimit(message: string): void {
   limitHit = { at: Date.now(), message: message.slice(0, 300) }
@@ -70,6 +83,7 @@ export async function usageReport(): Promise<UsageReport> {
       }
     }
   }
+  for (const e of db.get().usageLog ?? []) if (now - e.t < 31 * DAY) entries.push({ t: e.t, tokens: e.tokens, lp: true })
   entries.sort((a, b) => a.t - b.t)
 
   // Group into 5-hour windows, each starting at the hour of its first message.

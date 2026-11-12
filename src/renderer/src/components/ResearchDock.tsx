@@ -64,13 +64,20 @@ export function ResearchDock() {
           {!min && (
             <div className="dock-body">
               <div className="dock-run">{run.title}</div>
-              {batches.length > 1 && (
+              {run.stages && (
+                <div className="dock-batches" aria-label="Steps">
+                  {run.stages.map((st) => <i key={st.key} className={`b-${st.status === 'done' ? 'done' : st.status === 'running' ? 'running' : 'waiting'}`} style={{ width: 40 }} title={`${st.label}: ${st.status}`} />)}
+                </div>
+              )}
+              {!run.stages && batches.length > 1 && (
                 <div className="dock-batches" aria-label="Batches">
                   {batches.map((b) => <i key={b.n} className={`b-${b.status}`} title={`Batch ${b.n}: ${b.status}, ${b.found} found`} />)}
                 </div>
               )}
               <div className="dock-meta muted">
-                {batches.length > 1 ? `${doneB} of ${batches.length} batches done${active ? `, ${active} running` : ''}` : live ? 'One Claude session' : ''}
+                {run.stages
+                  ? (() => { const cur = run.stages.find((x) => x.status === 'running') ?? [...run.stages].reverse().find((x) => x.status === 'done'); return cur ? `${cur.label}: ${cur.detail}` : '' })()
+                  : batches.length > 1 ? `${doneB} of ${batches.length} batches done${active ? `, ${active} running` : ''}` : live ? 'One Claude session' : ''}
               </div>
               {live && last && <div className="dock-last" title={last.text}>{last.batch ? `B${last.batch} · ` : ''}{last.text}</div>}
               {!live && run.warning && <div className="dock-last">{run.warning}</div>}

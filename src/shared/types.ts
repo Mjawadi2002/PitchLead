@@ -38,7 +38,20 @@ export interface Lead {
   createdAt: number
   updatedAt: number
   stageChangedAt: number
+  /** Where the lead came from: map data, a web list, Claude web research, or added by hand. */
+  source?: LeadSource
+  address?: string
+  socials?: string[]
+  tech?: string[]
+  /** True once Claude has researched this one company in depth. */
+  deepResearched?: boolean
+  /** Meeting brief with likely objections, written on request. */
+  meetingBrief?: string
+  /** Never email this lead (they opted out or bounced). */
+  doNotContact?: boolean
 }
+
+export type LeadSource = 'map' | 'web' | 'research' | 'manual'
 
 export type Channel = 'email' | 'linkedin'
 export type Lang = 'en' | 'fr' | 'ar'
@@ -48,6 +61,8 @@ export interface Draft {
   leadId: string
   channel: Channel
   lang: Lang
+  /** Email sequence step: 0 is the first email, 1 and 2 are follow-ups. LinkedIn notes use 0. */
+  step?: number
   subject: string
   body: string
   updatedAt: number
@@ -63,6 +78,56 @@ export interface ResearchInput {
   tech: string
   count: number
   extra: string
+  /** fast: map data and web lists, read by code, scored by Claude in bulk. deep: Claude researches each company. */
+  engine?: 'fast' | 'deep'
+  /** Fast engine only: research leads that score 8 or more in depth afterwards. */
+  deepTop?: boolean
+}
+
+export type OutboxStatus = 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
+
+export interface OutboxItem {
+  id: string
+  leadId: string
+  step: number
+  to: string
+  subject: string
+  body: string
+  lang: Lang
+  status: OutboxStatus
+  /** Not sent before this time. Follow-ups are scheduled days after the first email. */
+  dueAt: number
+  sentAt?: number
+  messageId?: string
+  error?: string
+  createdAt: number
+}
+
+export interface MailSettings {
+  provider: 'gmail' | 'outlook' | 'other'
+  address: string
+  fromName: string
+  smtpHost: string
+  smtpPort: number
+  imapHost: string
+  imapPort: number
+  dailyLimit: number
+  /** Local hours when mail may go out, 24-hour clock, and whether weekends are allowed. */
+  startHour: number
+  endHour: number
+  weekends: boolean
+  followUpDays: number[]
+  optOutLine: string
+  /** Emails or domains that must never be contacted, one per line. */
+  doNotContact: string
+  trackReplies: boolean
+}
+
+export interface MailStatus {
+  connected: boolean
+  sentToday: number
+  lastCheck?: number
+  lastError?: string
 }
 
 export type RunEventKind = 'phase' | 'search' | 'fetch' | 'read' | 'write' | 'note' | 'error'
@@ -84,6 +149,13 @@ export interface BatchState {
   angle: string
 }
 
+export interface RunStage {
+  key: 'find' | 'read' | 'score' | 'deep'
+  label: string
+  status: 'waiting' | 'running' | 'done' | 'skipped'
+  detail: string
+}
+
 export type RunStatus = 'running' | 'done' | 'failed' | 'cancelled'
 
 export interface Run {
@@ -96,6 +168,8 @@ export interface Run {
   leadIds: string[]
   events: RunEvent[]
   phase: number
+  /** Fast engine progress, one entry per stage. */
+  stages?: RunStage[]
   /** Big runs are split into batches of BATCH_SIZE, one Claude session each. */
   batch?: number
   batches?: number
@@ -132,6 +206,7 @@ export interface Settings {
   onboarded: boolean
   /** How many Claude sessions a big run uses at once. */
   parallel: number
+  mail: MailSettings
 }
 
 export interface UsageWindow {
@@ -156,8 +231,11 @@ export interface Snapshot {
   leads: Lead[]
   runs: Run[]
   drafts: Draft[]
+  outbox: OutboxItem[]
   settings: Settings
   hasApiKey: boolean
+  hasMailPassword: boolean
+  mailStatus: MailStatus
 }
 
 export interface ClaudeStatus {
@@ -193,7 +271,33 @@ export const DEFAULT_INPUT: ResearchInput = {
   pains: '',
   tech: '',
   count: 10,
-  extra: ''
+  extra: '',
+  engine: 'fast',
+  deepTop: false
+}
+
+export const DEFAULT_MAIL: MailSettings = {
+  provider: 'gmail',
+  address: '',
+  fromName: '',
+  smtpHost: 'smtp.gmail.com',
+  smtpPort: 465,
+  imapHost: 'imap.gmail.com',
+  imapPort: 993,
+  dailyLimit: 30,
+  startHour: 9,
+  endHour: 17,
+  weekends: false,
+  followUpDays: [3, 7],
+  optOutLine: 'If this is not relevant, reply "no thanks" and I will not write again.',
+  doNotContact: '',
+  trackReplies: true
+}
+
+export const MAIL_PRESETS: Record<MailSettings['provider'], Pick<MailSettings, 'smtpHost' | 'smtpPort' | 'imapHost' | 'imapPort'>> = {
+  gmail: { smtpHost: 'smtp.gmail.com', smtpPort: 465, imapHost: 'imap.gmail.com', imapPort: 993 },
+  outlook: { smtpHost: 'smtp-mail.outlook.com', smtpPort: 587, imapHost: 'outlook.office365.com', imapPort: 993 },
+  other: { smtpHost: '', smtpPort: 465, imapHost: '', imapPort: 993 }
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -216,5 +320,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultLang: 'en',
   lastInput: null,
   onboarded: false,
-  parallel: 3
+  parallel: 3,
+  mail: DEFAULT_MAIL
 }

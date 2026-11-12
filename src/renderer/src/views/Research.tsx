@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowRight, CaretRight, Check, FileText, FolderOpen, Globe, MagnifyingGlass, NotePencil, Play, Stop, Trash, WarningCircle, X
+  ArrowRight, Lightning, CaretRight, Check, FileText, FolderOpen, Globe, MagnifyingGlass, NotePencil, Play, Stop, Trash, WarningCircle, X
 } from '@phosphor-icons/react'
 import { BATCH_SIZE, DEFAULT_INPUT, MAX_LEADS, PHASES, type ResearchInput, type Run, type RunEvent } from '@shared/types'
 import { spring, useApp } from '../state'
-import { ShowMore, mod, timeAgo } from '../components/ui'
+import { ShowMore, Switch, mod, timeAgo } from '../components/ui'
 
 const KIND_ICON: Record<RunEvent['kind'], JSX.Element> = {
   phase: <ArrowRight size={13} />,
@@ -29,6 +29,15 @@ function estimate(count: number, model: string, parallel = 1) {
   if (model === 'sonnet') mins *= 0.6
   const m = Math.round(mins / 5) * 5 || Math.ceil(mins)
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ''}`.trim() : `${m} min`
+}
+
+/** Fast engine: map and web listing, website reading, then bulk scoring. Measured on real runs. */
+function fastEstimate(count: number, deepTop: boolean, parallel: number) {
+  const pool = Math.max(count + 5, count * 1.6)
+  let mins = 1.5 + pool / 40 + Math.ceil(pool / 20 / Math.max(1, parallel)) * 1.2
+  if (deepTop) mins += Math.ceil(Math.min(15, count / 3) / Math.max(1, parallel)) * 4
+  const m = Math.max(2, Math.round(mins))
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`
 }
 
 function elapsed(from: number, to = Date.now()) {
@@ -56,6 +65,7 @@ export function Research() {
   const [selectedId, setSelectedId] = useState<string | null>(running?.id ?? data.runs[0]?.id ?? null)
   const selected = data.runs.find((r) => r.id === selectedId) ?? running ?? data.runs[0]
   const set = (patch: Partial<ResearchInput>) => setInput((i) => ({ ...i, ...patch }))
+  const fast = (input.engine ?? 'fast') === 'fast'
 
   useEffect(() => { if (running) setSelectedId(running.id) }, [running?.id])
 
@@ -89,7 +99,7 @@ export function Research() {
       <div className="vh">
         <div>
           <h1>Research</h1>
-          <p>Describe what you sell and who buys it. Claude searches the web, checks each company and scores how well it fits.</p>
+          <p>Describe what you sell and who buys it. LeadPitch finds companies on the map and the web, reads their websites, and Claude scores how well each one fits.</p>
         </div>
       </div>
 
@@ -131,10 +141,31 @@ export function Research() {
             )}
           </AnimatePresence>
           <div className="field">
+            <span className="label">How to research</span>
+            <div className="engine-pick" role="radiogroup" aria-label="How to research">
+              <button type="button" role="radio" aria-checked={fast} className={`engine ${fast ? 'on' : ''}`} onClick={() => set({ engine: 'fast' })}>
+                <Lightning size={16} weight={fast ? 'fill' : 'regular'} />
+                <div><b>Fast</b><span>Map listings and web lists, websites read by code, Claude scores in bulk. Best for many leads.</span></div>
+              </button>
+              <button type="button" role="radio" aria-checked={!fast} className={`engine ${!fast ? 'on' : ''}`} onClick={() => set({ engine: 'deep' })}>
+                <MagnifyingGlass size={16} weight={!fast ? 'bold' : 'regular'} />
+                <div><b>Deep</b><span>Claude researches every company on the web. Strongest signals, slower, uses more of your plan.</span></div>
+              </button>
+            </div>
+            {fast && (
+              <label className="check-line">
+                <Switch label="Deep research on top fits" checked={!!input.deepTop} onChange={(v) => set({ deepTop: v })} />
+                <span>Afterwards, research leads that score 8 or more in depth (up to 15).</span>
+              </label>
+            )}
+          </div>
+          <div className="field">
             <label htmlFor="r-count">Number of leads</label>
             <div className="range-row"><input id="r-count" type="range" min={5} max={MAX_LEADS} step={5} value={input.count} onChange={(e) => set({ count: Number(e.target.value) })} /><b className="num">{input.count}</b></div>
             <span className="help">
-              {input.count > BATCH_SIZE
+              {fast
+                ? `Expect about ${fastEstimate(input.count, !!input.deepTop, data.settings.parallel ?? 3)}. Uses far less of your Claude plan than Deep.`
+                : input.count > BATCH_SIZE
                 ? `Runs as ${Math.ceil(input.count / BATCH_SIZE)} batches of up to ${BATCH_SIZE}, ${Math.min(data.settings.parallel ?? 3, Math.ceil(input.count / BATCH_SIZE))} at a time. Expect about ${estimate(input.count, data.settings.model, data.settings.parallel ?? 3)}. Leads are saved as each batch finishes, and parallel batches use your plan limit faster.`
                 : `Expect about ${estimate(input.count, data.settings.model, data.settings.parallel ?? 3)}.`}
             </span>
@@ -222,12 +253,22 @@ function RunPanel({ run, onViewLeads, onToast }: { run?: Run; onViewLeads: () =>
         <div style={{ minWidth: 0 }}><b>{run.title}</b><div className="muted" style={{ fontSize: 12 }}>{timeAgo(run.createdAt)} · {elapsed(run.createdAt, run.finishedAt)} · <span className="num">{run.leadIds.length} of {run.input.count} leads</span>{multi && isRunning ? ` · batch ${run.batch} of ${run.batches}` : ''}</div></div>
         <span className="chip"><span className={`dot ${isRunning ? 'live' : run.status === 'done' ? '' : run.status === 'failed' ? 'warn' : 'idle'}`} />{state}</span>
       </div>
-      {multi && (
+      {(multi || run.stages) && (
         <div className="run-progress" aria-label="Leads found" title={`${run.leadIds.length} of ${run.input.count} leads`}>
           <i style={{ width: `${Math.min(100, (run.leadIds.length / Math.max(1, run.input.count)) * 100)}%` }} />
         </div>
       )}
-      {multi ? (
+      {run.stages ? (
+        <ol className="phases stages">
+          {run.stages.map((st) => (
+            <li className={`phase ${st.status === 'done' ? 'done' : st.status === 'running' ? 'on' : st.status === 'skipped' ? 'skipped' : ''}`} key={st.key}>
+              <span className="st">{st.status === 'done' && <Check size={11} weight="bold" />}</span>
+              <div className="b-text"><b>{st.label}</b><span>{st.detail}</span></div>
+              <time className="num" />
+            </li>
+          ))}
+        </ol>
+      ) : multi ? (
         <ol className="phases batches">
           {(run.batchStates ?? []).map((b) => (
             <li className={`phase ${b.status === 'done' ? 'done' : b.status === 'running' ? 'on' : b.status === 'failed' ? 'failed' : ''}`} key={b.n}>

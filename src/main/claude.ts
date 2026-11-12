@@ -1,3 +1,4 @@
+import { recordUsage } from './usage'
 import { app } from 'electron'
 import { spawn, execFile, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
@@ -124,6 +125,8 @@ export async function ask(opts: {
   timeoutMs?: number
   /** Built-in tools to allow, for example WebSearch and WebFetch. None by default. */
   tools?: string[]
+  /** Aborting kills the Claude Code process. */
+  signal?: AbortSignal
 }): Promise<string> {
   const path = await resolveClaude(opts.settings)
   if (!path) throw new Error('Claude Code is not installed.')
@@ -138,6 +141,7 @@ export async function ask(opts: {
     let out = ''
     let err = ''
     const timer = setTimeout(() => { killTree(child); reject(new Error('Claude took too long to answer.')) }, opts.timeoutMs ?? 120000)
+    opts.signal?.addEventListener('abort', () => { clearTimeout(timer); killTree(child); reject(new Error('Stopped.')) })
     child.stdout?.on('data', (d) => (out += d))
     child.stderr?.on('data', (d) => (err += d))
     child.on('error', (e) => { clearTimeout(timer); reject(e) })
@@ -145,6 +149,7 @@ export async function ask(opts: {
       clearTimeout(timer)
       try {
         const j = JSON.parse(out)
+        recordUsage(j.usage)
         if (j.is_error || j.subtype !== 'success') reject(new Error(String(j.result || err || 'Claude returned an error.')))
         else resolve(String(j.result ?? ''))
       } catch {

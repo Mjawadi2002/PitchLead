@@ -91,8 +91,10 @@ export function Leads() {
       {label}{sort.key === key && (sort.dir === 1 ? <CaretUp size={10} weight="bold" /> : <CaretDown size={10} weight="bold" />)}
     </button>
   )
-  const exportCsv = async (ids: string[]) => {
-    const p = await window.lp.leads.exportCsv(ids)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportCsv = async (ids: string[], format: 'full' | 'outreach' = 'full') => {
+    setExportOpen(false)
+    const p = await window.lp.leads.exportCsv(ids, format)
     if (p) toast(`Exported ${ids.length} leads`)
   }
   const addLead = async () => {
@@ -126,7 +128,15 @@ export function Leads() {
         </div>
         <div className="actions">
           <button className="btn btn-ghost" onClick={addLead}><Plus size={14} />Add</button>
-          <button className="btn btn-ghost" onClick={() => exportCsv(rows.map((r) => r.id))}><Export size={14} />Export CSV</button>
+          <div className="menu-wrap">
+            <button className="btn btn-ghost" aria-expanded={exportOpen} onClick={() => setExportOpen((o) => !o)}><Export size={14} />Export</button>
+            {exportOpen && (
+              <div className="menu" role="menu" onMouseLeave={() => setExportOpen(false)}>
+                <button role="menuitem" onClick={() => exportCsv(rows.map((r) => r.id))}><b>All details</b><span>Every field, for spreadsheets</span></button>
+                <button role="menuitem" onClick={() => exportCsv(rows.filter((r) => r.email).map((r) => r.id), 'outreach')}><b>For Instantly or Smartlead</b><span>Leads with an email, columns they import directly</span></button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -15,18 +15,44 @@
 
 ## What it does
 
-You describe your product, or point LeadPitch at its folder. Claude searches the web, reads
-company pages and reviews, and looks for signs of need: job posts, new openings, complaints
-in reviews, funding. Each company comes back with a fit score, the reason for that score, who
-to contact, how to approach them and two opening lines, plus the published contact details:
-email, phone, contact page, website and LinkedIn. You can ask for up to 100 leads in one run;
-big runs split into batches that run in parallel, and a small panel in the corner shows progress
-while you work elsewhere in the app. The title bar and Settings show how much of your Claude usage
-window you have used.
+You describe your product and who buys it. LeadPitch finds companies, reads what they publish,
+and Claude scores each one from 1 to 10 with the reason, who to contact, how to approach them,
+two opening lines and the published contact details (email, phone, contact page, website,
+social pages). Then it writes a short email sequence and sends it from your own mailbox, stops
+follow-ups when someone replies, and moves the lead along the pipeline.
 
-It runs the [Lead Research Assistant](https://github.com/ComposioHQ/awesome-claude-skills/tree/master/lead-research-assistant)
-skill from ComposioHQ's awesome-claude-skills (Apache 2.0) and adds a pipeline, outreach
-drafts and export around it.
+Nothing paid is needed besides your Claude subscription.
+
+### Two research engines
+
+| | Fast (default) | Deep |
+| --- | --- | --- |
+| Finds companies | OpenStreetMap listings (free, no key), plus short Claude web-search lists when the map has too few | Claude researches the web for each company |
+| Reads websites | Plain code: emails, phones, people, social links, tech stack | Claude reads pages |
+| Scores | Claude, 20 companies per call, no web tools | Claude, per company |
+| Best for | Many leads, local businesses | Fewer leads, strongest buying signals |
+
+Fast runs can also research the top fits (score 8 or more) in depth afterwards, and any single
+lead can be researched in depth from its panel. In tests, 20 cafés in Monastir took under
+8 minutes with the map service down, and 10 in Mahdia took 4 minutes, using roughly 5,000 to
+6,000 Claude tokens per lead. Up to 100 leads per run; a small panel in the corner shows progress
+while you work elsewhere, and the title bar shows how much of your Claude usage window is used.
+
+### Outreach from your mailbox
+
+- Connect Gmail, Outlook or any SMTP and IMAP mailbox with an app password, stored encrypted.
+- Claude writes a first email, two follow-ups and a LinkedIn note, in English, French or Arabic.
+- Nothing is sent until you approve it. Then a daily limit, sending hours, a pause between
+  messages, an opt-out line, a do-not-contact list, and a check that the recipient domain accepts
+  mail all apply.
+- Follow-ups go in the same thread and are cancelled when the lead replies. Replies move the lead
+  to Replied; bounced addresses are marked do-not-contact.
+- Meeting briefs with likely objections, written from the lead research.
+- CSV export, including a format Instantly and Smartlead import without column mapping.
+
+It builds on the [Lead Research Assistant](https://github.com/ComposioHQ/awesome-claude-skills/tree/master/lead-research-assistant)
+skill (ComposioHQ, Apache 2.0). Website extraction ideas and sales templates are adapted from
+[ai-sales-team-claude](https://github.com/zubair-trabzada/ai-sales-team-claude) (MIT).
 
 ## Screens
 
@@ -44,8 +70,9 @@ in batches, and leads are saved after each batch.
 
 ![Pipeline](docs/screenshots/pipeline.png)
 
-**Outreach.** Claude writes a first email or LinkedIn note from each lead's research, in
-English, French or Arabic. Edit it, copy it, send it from your own account.
+**Outreach.** Claude writes a three-email sequence and a LinkedIn note from each lead's research,
+in English, French or Arabic. Edit it, then approve it to send from your own mailbox, or copy it.
+The Outbox shows what is scheduled, sent, failed or cancelled.
 
 ![Outreach](docs/screenshots/outreach.png)
 
@@ -92,7 +119,12 @@ npm run icons      # regenerate the app icons and the README logo from the mark
 | Path | What it does |
 | --- | --- |
 | `src/main/index.ts` | Frameless window, IPC, CSV export |
-| `src/main/research.ts` | Runs research in batches, parses the stream into steps and activity, reads `leads.json` |
+| `src/main/research.ts` | Starts runs; the Deep engine in parallel batches |
+| `src/main/fast.ts` | The Fast engine: find, read, score, optional deep research |
+| `src/main/sources/osm.ts` | OpenStreetMap search (Nominatim and Overpass) |
+| `src/main/sources/website.ts` | Reads company websites with plain HTTP |
+| `src/main/mail.ts` | Sending queue, guards, follow-ups, reply and bounce tracking |
+| `src/main/usage.ts` | Claude usage in 5-hour windows |
 | `src/main/claude.ts` | Finds Claude Code, sign-in status, one-shot prompts |
 | `src/main/prompts.ts` | Skill text plus the LeadPitch output contract, draft prompts |
 | `src/main/store.ts` | Local JSON store in the app data folder, atomic writes |

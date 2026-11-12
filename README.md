@@ -52,6 +52,47 @@ lead can be researched in depth from its panel. In tests, 20 cafés in Monastir 
 6,000 Claude tokens per lead. Up to 100 leads per run; a small panel in the corner shows progress
 while you work elsewhere, and the title bar shows how much of your Claude usage window is used.
 
+### Uses less of your Claude limit
+
+- **A model for each task.** Company lists, website lookups and contact searches use Haiku. Scoring,
+  emails and meeting briefs use Sonnet. Only deep research uses the model you choose (Opus by
+  default). An Economy switch moves scoring to Haiku and deep research to Sonnet.
+- **Memory.** For each project, LeadPitch keeps the websites it read, the phones and sites it
+  looked up, the companies Claude scored and the company lists it searched. A new run in the same
+  area reuses them instead of paying again, and skips places that scored as poor fits before.
+  Editing what a project sells starts fresh scores. Settings shows how many Claude calls memory
+  saved, and it can be cleared at any time.
+- **Product folder summary.** When a project has a product folder, Claude reads it once and the
+  short summary is reused for every scoring call.
+
+### Free models at the limit (optional)
+
+When Claude says your usage limit is reached, LeadPitch can keep scoring and writing with free
+open models through [OmniRoute](https://github.com/cheaper-inference/OmniRoute) (MIT), then
+switch back to Claude when the window resets. It tries Claude again every 20 minutes.
+
+- Installed on request from Settings into LeadPitch's own data folder (about 900 MB, needs
+  Node.js 22.22 or 24 and newer). Its database, settings and home folder stay inside that folder.
+- It listens on 127.0.0.1 only and runs only while LeadPitch is open. Only Claude Code processes
+  that LeadPitch starts are pointed at it.
+- Those processes run with `--bare`, so your Claude subscription login is never read for them and
+  never reaches OmniRoute. Subscription traffic always goes straight to Anthropic.
+- You connect a free provider yourself (Groq, Google AI Studio, Cerebras, Mistral or NVIDIA) by
+  pasting its free key. Some free tiers may use prompts for training; LeadPitch shows which.
+- Free models cannot use Claude's web search. While they are in use, companies come from the map
+  and steps that need web search are skipped. The Deep engine needs Claude.
+- "Always" mode sends every task that does not need web search to free models, to save your
+  subscription. Remove it from Settings to delete the folder.
+
+### LinkedIn from your profile
+
+Connect LinkedIn in Settings: you sign in yourself, in a LeadPitch window whose sign-in is kept
+separate from your browser. From a lead, Message on LinkedIn opens their profile (or a search for
+the decision maker) with your note ready to paste or add to the message box. You press Connect or
+Message and Send yourself; LeadPitch never presses them, because LinkedIn restricts accounts that
+software drives. "I sent it" moves the lead to Contacted. A daily limit (20 by default) keeps the
+pace safe.
+
 ### Outreach from your mailbox
 
 - Connect Gmail, Outlook or any SMTP and IMAP mailbox with an app password, stored encrypted.
@@ -139,13 +180,19 @@ npm run icons      # regenerate the app icons and the README logo from the mark
 | `src/main/sources/website.ts` | Reads company websites with plain HTTP |
 | `src/main/mail.ts` | Sending queue, guards, follow-ups, reply and bounce tracking |
 | `src/main/usage.ts` | Claude usage in 5-hour windows |
+| `src/main/models.ts` | Which model each kind of task uses |
+| `src/main/memory.ts` | Remembered websites, lookups, scores, lists and product summaries |
+| `src/main/omniroute.ts` | Optional free models: install, start, providers, fallback at the limit |
+| `src/main/linkedin.ts` | LeadPitch's LinkedIn window and its note bar |
 | `src/main/claude.ts` | Finds Claude Code, sign-in status, one-shot prompts |
 | `src/main/prompts.ts` | Skill text plus the LeadPitch output contract, draft prompts |
 | `src/main/store.ts` | Local JSON store in the app data folder, atomic writes |
 | `src/renderer/src` | React interface: title bar, sidebar, views, command palette |
 | `resources/skill/SKILL.md` | The bundled skill |
 
-Data stays on your computer, in `%APPDATA%/LeadPitch/leadpitch.json`. Each run keeps its
+Data stays on your computer, in `%APPDATA%/LeadPitch/leadpitch.json`; memory is in
+`memory.json` next to it, free models in `omniroute/`, and the LinkedIn sign-in in LeadPitch's own
+browser profile. Each run keeps its
 prompt and `leads.json` in `%APPDATA%/LeadPitch/runs/<id>/`.
 
 ## Keyboard

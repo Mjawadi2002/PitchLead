@@ -7,8 +7,10 @@ import { BATCH_SIZE, MAX_LEADS, PHASES } from '@shared/types'
 import { AUTH_ERROR, LIMIT_ERROR, extractJson, killTree, readIfExists, resolveClaude, spawnClaude, writeText } from './claude'
 import { researchSystemPrompt, researchUserPrompt } from './prompts'
 import { db, save } from './store'
-import { noteLimit, recordUsage } from './usage'
+import { noteLimit, recordModelUsage } from './usage'
 import { runFast } from './fast'
+import { modelFor } from './models'
+import { useFreeNow } from './omniroute'
 
 /** Every Claude Code session a run has open, so Stop can end all of them. */
 const children = new Map<string, Set<ChildProcess>>()
@@ -142,7 +144,9 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
     ]
     const ctrl = new AbortController()
     aborts.set(run.id, ctrl)
-    push({ kind: 'note', text: settings.mode === 'apikey' ? 'Started with your API key' : 'Started with your Claude subscription' })
+    push({ kind: 'note', text: useFreeNow(settings)
+      ? 'Using free models until your Claude limit resets. Companies come from the map; steps that need web search are skipped.'
+      : `Started with your ${settings.mode === 'apikey' ? 'API key' : 'Claude subscription'}. ${settings.models.smart ? `Lists and lookups use Haiku, scoring uses ${modelFor('score', settings) === 'haiku' ? 'Haiku' : 'Sonnet'}.` : ''}` })
     ;(async () => {
       let res: { error?: string; warning?: string } = {}
       try {
@@ -166,6 +170,17 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
       save(true)
       notify()
     })()
+    return run.id
+  }
+
+  if (useFreeNow(settings)) {
+    running.delete(run.id)
+    children.delete(run.id)
+    run.status = 'failed'
+    run.finishedAt = Date.now()
+    run.error = 'The Deep engine needs Claude web search, and LeadPitch is using free models until your Claude limit resets. The Fast engine still works: it finds companies on the map and scores them with free models.'
+    save(true)
+    notify()
     return run.id
   }
 
@@ -227,7 +242,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
       const tools = ['Read', 'Glob', 'Grep', 'Write', ...(settings.webResearch ? ['WebSearch', 'WebFetch'] : [])].join(',')
       const args = [
         '-p', '--output-format', 'stream-json', '--verbose',
-        '--model', settings.model,
+        '--model', modelFor('research', settings),
         '--append-system-prompt-file', sysFile,
         '--tools', tools,
         '--allowedTools', tools,
@@ -275,7 +290,7 @@ export async function startRun(input: ResearchInput, notify: () => void): Promis
             }
           }
         }
-        if (j.type === 'result') { result = j; recordUsage(j.usage) }
+        if (j.type === 'result') { result = j; recordModelUsage(j.modelUsage, j.usage) }
       }
 
       child.stdout?.setEncoding('utf8')

@@ -1,10 +1,12 @@
-import { recordUsage } from './usage'
+import { recordModelUsage } from './usage'
 import { app } from 'electron'
 import { spawn, execFile, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { basename, dirname, join } from 'path'
 import type { ClaudeStatus, Settings } from '@shared/types'
+import { WEB_TASKS, modelFor, type Task } from './models'
+import { activateFallback, claudeIsBack, freeRoute, noteFreeCall, useFreeNow, type FreeRoute } from './omniroute'
 
 const isWin = process.platform === 'win32'
 
@@ -53,13 +55,26 @@ const quote = (a: string) => (/^[\w\-./:\\=,]+$/.test(a) ? a : `"${a.replace(/"/
 export function spawnClaude(
   path: string,
   args: string[],
-  opts: { cwd: string; apiKey?: string | null }
+  opts: { cwd: string; apiKey?: string | null; free?: FreeRoute }
 ): ChildProcess {
   const env = { ...process.env }
-  // Subscription mode must not pick up a stray API key from the environment.
-  delete env.ANTHROPIC_API_KEY
-  if (opts.apiKey) env.ANTHROPIC_API_KEY = opts.apiKey
-  const finalArgs = opts.apiKey ? ['--bare', ...args] : args
+  // Subscription mode must not pick up a stray API key or endpoint from the environment.
+  for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL']) delete env[k]
+  if (opts.free) {
+    // Free models: this one process talks to LeadPitch's own OmniRoute on localhost.
+    // --bare below means Claude Code never reads the subscription login for it, so that login never reaches OmniRoute.
+    env.ANTHROPIC_BASE_URL = opts.free.baseUrl
+    env.ANTHROPIC_API_KEY = opts.free.key
+    env.ANTHROPIC_MODEL = opts.free.model
+    env.ANTHROPIC_SMALL_FAST_MODEL = opts.free.model
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = opts.free.model
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = opts.free.model
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = opts.free.model
+    env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+    // A free provider that is down should fail fast, not retry for minutes.
+    env.CLAUDE_CODE_MAX_RETRIES = '1'
+  } else if (opts.apiKey) env.ANTHROPIC_API_KEY = opts.apiKey
+  const finalArgs = opts.apiKey || opts.free ? ['--bare', ...args] : args
   if (path.toLowerCase().endsWith('.cmd')) {
     return spawn([quote(path), ...finalArgs.map(quote)].join(' '), { cwd: opts.cwd, env, shell: true, windowsHide: true })
   }
@@ -116,31 +131,88 @@ export async function openSignIn(settings: Settings): Promise<void> {
 export const AUTH_ERROR = /authenticat|oauth|log ?in|401|invalid api key|credit balance/i
 export const LIMIT_ERROR = /usage limit|rate limit|limit reached|limit will reset|resets? at|429|overloaded/i
 
-/** Run a one-shot prompt with no tools and return the text result. */
-export async function ask(opts: {
+/** Claude's own words when the subscription window is used up. Not plain overload or rate errors. */
+export const QUOTA_ERROR = /usage limit|limit reached|limit will reset|hit your limit|out of extra usage|weekly limit/i
+
+export const FREE_NO_WEB = 'Web search needs Claude. LeadPitch skipped this step while it uses free models.'
+
+export interface AskOptions {
   settings: Settings
   apiKey: string | null
   prompt: string
-  model?: string
+  /** The kind of work; it picks the model. */
+  task: Task
   timeoutMs?: number
   /** Built-in tools to allow, for example WebSearch and WebFetch. None by default. */
   tools?: string[]
+  /** Folders Claude may read, for the product folder. */
+  addDirs?: string[]
   /** Aborting kills the Claude Code process. */
   signal?: AbortSignal
-}): Promise<string> {
+}
+
+/**
+ * Run a one-shot prompt and return the text result.
+ * The task picks the model. When the Claude limit is reached and the free fallback is on,
+ * tasks that do not need web search go to free models instead, through LeadPitch's own OmniRoute.
+ */
+export async function ask(opts: AskOptions): Promise<string> {
+  const web = WEB_TASKS.has(opts.task) || !!opts.tools?.some((t) => /^Web/.test(t))
+  if (useFreeNow(opts.settings)) {
+    if (web) throw new Error(FREE_NO_WEB)
+    return askFree(opts)
+  }
+  try {
+    return await askOnce(opts)
+  } catch (e) {
+    const msg = (e as Error).message
+    if (opts.settings.fallback?.mode === 'auto' && QUOTA_ERROR.test(msg) && !opts.signal?.aborted && activateFallback(msg)) {
+      if (web) throw new Error(`Your Claude limit is reached. ${FREE_NO_WEB}`)
+      return askFree(opts)
+    }
+    throw e
+  }
+}
+
+/** A free-model call, with provider errors turned into plain words (and never mistaken for a Claude sign-in problem). */
+async function askFree(opts: AskOptions): Promise<string> {
+  try {
+    return await askOnce(opts, await freeRoute(opts.settings))
+  } catch (e) {
+    throw new Error(freeError((e as Error).message))
+  }
+}
+
+export function freeError(msg: string): string {
+  if (/^Free models|^Stopped/.test(msg)) return msg
+  const why = /429|rate.?limit|quota|too many/i.test(msg) ? 'the free providers have reached their own limits for now'
+    : /401|403|invalid.{0,10}key|unauthori/i.test(msg) ? 'a provider key was rejected. Check it in Settings, Free models'
+    : /took too long/i.test(msg) ? 'they took too long to answer'
+    : /not installed|did not start|Node\.js|port/i.test(msg) ? msg
+    : 'no free provider answered. Check Settings, Free models'
+  return `Free models could not answer: ${why}.`
+}
+
+export async function askOnce(opts: AskOptions, free?: FreeRoute): Promise<string> {
   const path = await resolveClaude(opts.settings)
   if (!path) throw new Error('Claude Code is not installed.')
   const cwd = join(app.getPath('userData'), 'scratch')
   mkdirSync(cwd, { recursive: true })
-  const child = spawnClaude(
-    path,
-    ['-p', '--output-format', 'json', '--model', opts.model ?? opts.settings.model, '--tools', (opts.tools ?? []).join(','), ...(opts.tools?.length ? ['--allowedTools', opts.tools.join(','), '--permission-mode', 'dontAsk'] : []), '--no-session-persistence'],
-    { cwd, apiKey: opts.settings.mode === 'apikey' ? opts.apiKey : null }
-  )
+  const tools = (opts.tools ?? []).filter((t) => !free || !/^Web/.test(t))
+  const args = [
+    '-p', '--output-format', 'json',
+    '--model', free ? free.model : modelFor(opts.task, opts.settings),
+    '--tools', tools.join(','),
+    ...(tools.length ? ['--allowedTools', tools.join(','), '--permission-mode', 'dontAsk'] : []),
+    ...(opts.addDirs ?? []).flatMap((d) => ['--add-dir', d]),
+    '--no-session-persistence'
+  ]
+  const child = spawnClaude(path, args, { cwd, apiKey: !free && opts.settings.mode === 'apikey' ? opts.apiKey : null, free })
   return new Promise((resolve, reject) => {
     let out = ''
     let err = ''
-    const timer = setTimeout(() => { killTree(child); reject(new Error('Claude took too long to answer.')) }, opts.timeoutMs ?? 120000)
+    const who = free ? 'The free model' : 'Claude'
+    const timer = setTimeout(() => { killTree(child); reject(new Error(`${who} took too long to answer.`)) }, opts.timeoutMs ?? 120000)
     opts.signal?.addEventListener('abort', () => { clearTimeout(timer); killTree(child); reject(new Error('Stopped.')) })
     child.stdout?.on('data', (d) => (out += d))
     child.stderr?.on('data', (d) => (err += d))
@@ -149,11 +221,15 @@ export async function ask(opts: {
       clearTimeout(timer)
       try {
         const j = JSON.parse(out)
-        recordUsage(j.usage)
-        if (j.is_error || j.subtype !== 'success') reject(new Error(String(j.result || err || 'Claude returned an error.')))
-        else resolve(String(j.result ?? ''))
+        if (free) { if (!j.is_error) noteFreeCall() }
+        else recordModelUsage(j.modelUsage, j.usage)
+        if (j.is_error || j.subtype !== 'success') reject(new Error(String(j.result || err || `${who} returned an error.`)))
+        else {
+          if (!free) claudeIsBack()
+          resolve(String(j.result ?? ''))
+        }
       } catch {
-        reject(new Error((err || out || 'No answer from Claude.').trim().slice(0, 400)))
+        reject(new Error((err || out || `No answer from ${who.toLowerCase()}.`).trim().slice(0, 400)))
       }
     })
     child.stdin?.end(opts.prompt)

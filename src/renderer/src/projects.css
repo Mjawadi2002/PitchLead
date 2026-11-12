@@ -10,6 +10,8 @@
 .proj-name b { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-btn > svg { color: var(--fg-3); flex: none; }
 .app[data-collapsed='true'] .proj-btn { padding: 6px 7px; }
+/* Collapsed sidebar: only the project mark shows. */
+.app[data-collapsed='true'] .proj-btn .txt { display: none; }
 .app[data-collapsed='true'] .proj-btn:hover::after {
   content: attr(data-tip); position: absolute; left: 46px; top: 50%; transform: translateY(-50%);
   background: var(--fg); color: var(--win); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; z-index: 40; pointer-events: none;

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowsClockwise, Check, Copy, EnvelopeSimple, PaperPlaneTilt, PencilSimpleLine, Tray, WarningCircle, X } from '@phosphor-icons/react'
+import { ArrowsClockwise, Check, Copy, EnvelopeSimple, LinkedinLogo, PaperPlaneTilt, PencilSimpleLine, Tray, WarningCircle, X } from '@phosphor-icons/react'
 import type { Channel, Draft, Lang, OutboxItem } from '@shared/types'
 import { spring, useApp } from '../state'
 import { Empty, Score, Seg, ShowMore, stageLabel, timeAgo } from '../components/ui'
@@ -145,6 +145,14 @@ function Writer() {
       setSending(false)
     }
   }
+  const li = data.linkedinStatus
+  const openLinkedin = async () => {
+    setError(null)
+    // Save what is in the editor now, so the LinkedIn window shows exactly this note.
+    window.clearTimeout(saveTimer.current)
+    if (body.trim()) await window.lp.drafts.save({ id: draft?.id ?? crypto.randomUUID(), leadId: lead.id, channel: 'linkedin', lang, step: 0, subject: '', body, updatedAt: Date.now() })
+    try { await window.lp.linkedin.open(lead.id) } catch (e) { setError(clean((e as Error).message)) }
+  }
   const auth = error?.startsWith('AUTH:')
   const chars = body.length
   const days = data.settings.mail.followUpDays
@@ -270,6 +278,22 @@ function Writer() {
                 <button className="btn btn-primary" onClick={() => setConfirm(true)}><PaperPlaneTilt size={14} />{readySteps.length > 1 ? 'Send sequence' : 'Send'}</button>
               </>
             )}
+          </div>
+        )}
+
+        {channel === 'linkedin' && body.trim() && !busy && (
+          <div className="send-bar">
+            {lead.linkedinSentAt ? (
+              <span className="grow"><span className="li-sent"><Check size={11} weight="bold" />Sent on LinkedIn</span> <span className="muted">{timeAgo(lead.linkedinSentAt)}</span></span>
+            ) : (
+              <span className="grow muted">
+                {li.connected
+                  ? `Opens ${/linkedin\.com\/in\//i.test(lead.linkedin) ? 'their profile' : 'a search for the decision maker'} with this note ready. You press Send. ${li.sentToday} of ${data.settings.linkedin.dailyLimit} today.`
+                  : 'Connect LinkedIn once, then send this note from your own profile.'}
+                {chars > 300 && ' Connection notes are limited to 300 characters.'}
+              </span>
+            )}
+            <button className={`btn ${lead.linkedinSentAt ? 'btn-ghost' : 'btn-primary'}`} onClick={openLinkedin}><LinkedinLogo size={14} />{li.connected ? (lead.linkedinSentAt ? 'Open on LinkedIn' : 'Message on LinkedIn') : 'Connect LinkedIn'}</button>
           </div>
         )}
 

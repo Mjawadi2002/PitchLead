@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ClaudeStatus, Draft, Lang, Lead, Project, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
+import type { ClaudeStatus, Draft, FallbackDetails, FreeProvider, Lang, Lead, MemoryStats, Project, ResearchInput, Settings, Snapshot, UsageReport } from '@shared/types'
 
 const api = {
   platform: process.platform,
@@ -66,6 +66,29 @@ const api = {
   },
   usage: {
     get: (): Promise<UsageReport> => ipcRenderer.invoke('usage:get')
+  },
+  memory: {
+    stats: (): Promise<MemoryStats> => ipcRenderer.invoke('memory:stats'),
+    clear: (): Promise<MemoryStats> => ipcRenderer.invoke('memory:clear')
+  },
+  free: {
+    status: (): Promise<FallbackDetails> => ipcRenderer.invoke('fallback:status'),
+    providers: (): Promise<FreeProvider[]> => ipcRenderer.invoke('fallback:providers'),
+    install: (): Promise<FallbackDetails> => ipcRenderer.invoke('fallback:install'),
+    uninstall: (): Promise<FallbackDetails> => ipcRenderer.invoke('fallback:uninstall'),
+    addProvider: (id: string, key: string): Promise<FallbackDetails> => ipcRenderer.invoke('fallback:addProvider', id, key),
+    removeProvider: (id: string): Promise<FallbackDetails> => ipcRenderer.invoke('fallback:removeProvider', id),
+    test: (): Promise<{ ok: boolean; message: string }> => ipcRenderer.invoke('fallback:test'),
+    dashboard: (): Promise<void> => ipcRenderer.invoke('fallback:dashboard'),
+    onChange: (cb: () => void) => {
+      const h = () => cb()
+      ipcRenderer.on('fallback:changed', h)
+      return () => { ipcRenderer.removeListener('fallback:changed', h) }
+    }
+  },
+  linkedin: {
+    open: (leadId?: string): Promise<void> => ipcRenderer.invoke('linkedin:open', leadId),
+    disconnect: (): Promise<void> => ipcRenderer.invoke('linkedin:disconnect')
   },
   claude: {
     status: (): Promise<ClaudeStatus> => ipcRenderer.invoke('claude:status'),

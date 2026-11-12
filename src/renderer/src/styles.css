@@ -699,3 +699,18 @@ td:has(.ct-icons) { overflow: visible; }
 .tc-foot { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
 .tc-foot .grow { flex: 1; }
 @media (prefers-reduced-motion: reduce) { .tc-progress i { transition: none; } }
+
+/* Models per task, memory, free models */
+.model-plan { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+.model-plan > div { background: var(--surface); padding: 10px 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.model-plan span { font-size: 12px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-plan b { font-size: 13.5px; font-weight: 600; }
+@media (max-width: 860px) { .model-plan { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.inline-msg:not(.ok):not(.bad) { color: var(--fg-3); }
+.set-advanced { border-top: 1px solid var(--line); }
+.set-advanced > summary { list-style: none; cursor: pointer; padding: 12px 18px; font-size: 12.5px; font-weight: 600; color: var(--fg-2); display: flex; align-items: center; gap: 6px; user-select: none; }
+.set-advanced > summary::-webkit-details-marker { display: none; }
+.set-advanced > summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s ease; margin-right: 2px; }
+.set-advanced[open] > summary::before { transform: rotate(45deg); }
+.set-advanced > summary:hover { color: var(--fg); }
+.li-sent { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--pos); background: var(--pos-soft); border-radius: 999px; padding: 3px 9px; }

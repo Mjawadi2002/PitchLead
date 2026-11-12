@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowsClockwise, Key, TerminalWindow } from '@phosphor-icons/react'
-import type { Settings, TitlebarPrefs } from '@shared/types'
+import type { MemoryStats, ModelSettings, Settings, TitlebarPrefs } from '@shared/types'
 import { useApp } from '../state'
 import { MailSection } from '../components/MailSection'
+import { FreeModelsSection } from '../components/FreeModels'
+import { LinkedinSection } from '../components/LinkedinSection'
 import { Logo, Meter, Seg, Switch, fmtTokens, mod, resetsIn, usagePercent } from '../components/ui'
 
 export function SettingsView() {
@@ -16,6 +18,12 @@ export function SettingsView() {
   const [key, setKey] = useState('')
   const [keyErr, setKeyErr] = useState<string | null>(null)
   const [name, setName] = useState(s.senderName)
+  const setModels = (patch: Partial<ModelSettings>) => set({ models: { ...s.models, ...patch } })
+  const [mem, setMem] = useState<MemoryStats | null>(null)
+  const [clearing, setClearing] = useState(false)
+  useEffect(() => { window.lp.memory.stats().then(setMem) }, [data.runs.length])
+  const best = s.models.economy ? 'Sonnet' : s.model === 'opus' ? 'Opus' : 'Sonnet'
+  const plan = [['Lists and lookups', 'Haiku'], ['Scoring', s.models.economy ? 'Haiku' : 'Sonnet'], ['Emails and briefs', 'Sonnet'], ['Deep research', best]]
 
   const runTest = async () => {
     setTesting(true)
@@ -113,9 +121,24 @@ export function SettingsView() {
               </div>
             </div>
             <div className="set-row">
-              <div><b>Research model</b><span>Opus is the most thorough. Sonnet is faster and uses less of your limit.</span></div>
+              <div><b>Model for each task</b><span>Quick tasks go to Haiku and writing to Sonnet, so your limit lasts much longer. Deep research keeps the model below.</span></div>
+              <Switch label="Model for each task" checked={s.models.smart} onChange={(v) => setModels({ smart: v })} />
+            </div>
+            <div className="set-row">
+              <div><b>{s.models.smart ? 'Deep research model' : 'Model'}</b><span>Opus is the most thorough. Sonnet is faster and uses less of your limit.</span></div>
               <Seg label="Model" value={s.model} onChange={(v) => set({ model: v })} options={[{ value: 'opus', label: 'Opus' }, { value: 'sonnet', label: 'Sonnet' }]} />
             </div>
+            {s.models.smart && (
+              <div className="set-row">
+                <div><b>Economy</b><span>Haiku scores and Sonnet researches. Uses the least of your limit; scores are a little less precise.</span></div>
+                <Switch label="Economy" checked={s.models.economy} onChange={(v) => setModels({ economy: v })} />
+              </div>
+            )}
+            {s.models.smart && (
+              <div className="model-plan">
+                {plan.map(([task, m]) => <div key={task}><span>{task}</span><b>{m}</b></div>)}
+              </div>
+            )}
             <div className="set-row">
               <div><b>Parallel sessions</b><span>Runs larger than 15 leads split into batches. This many run at the same time: faster, but uses your limit faster.</span></div>
               <Seg label="Parallel sessions" value={String(s.parallel ?? 3)} onChange={(v) => set({ parallel: Number(v) })} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))} />
@@ -152,7 +175,37 @@ export function SettingsView() {
           </div>
         </section>
 
+        <section>
+          <h2 className="section-title">Memory</h2>
+          <div className="card">
+            <div className="set-row">
+              <div>
+                <b>Remember work already done</b>
+                <span>Websites read, phones looked up and companies scored are kept for each project, so a new run in the same area does not pay for them again. Editing what a project sells starts fresh scores.</span>
+              </div>
+              <Switch label="Remember work already done" checked={s.memory} onChange={(v) => set({ memory: v })} />
+            </div>
+            {mem && (
+              <div className="usage-grid">
+                <div><span>Saved so far</span><b className="num">{mem.savedCalls}</b><span>Claude calls not needed</span></div>
+                <div><span>Companies</span><b className="num">{mem.scores}</b><span>scores, {mem.lookups} lookups</span></div>
+                <div><span>Websites</span><b className="num">{mem.sites}</b><span>read, {(mem.bytes / 1048576).toFixed(1)} MB on disk</span></div>
+              </div>
+            )}
+            <div className="set-row">
+              <div><b>Clear memory</b><span>LeadPitch forgets what it read and scored. Your leads stay.</span></div>
+              <div className="ctl">
+                <button className="btn btn-ghost" disabled={clearing} onClick={async () => { setClearing(true); setMem(await window.lp.memory.clear()); setClearing(false); toast('Memory cleared') }}>Clear</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <FreeModelsSection />
+
         <MailSection />
+
+        <LinkedinSection />
 
         <section>
           <h2 className="section-title">Outreach</h2>

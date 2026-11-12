@@ -12,7 +12,9 @@ export function TitleBar() {
   const { data, claude, view, go, openPalette, sidebarCollapsed, toggleSidebar, usage, project } = useApp()
   const pct = usagePercent(usage)
   const usageTone = usage?.limitHit ? 'neg' : pct !== null && pct >= 85 ? 'warn' : ''
-  const usageTitle = usage?.limitHit
+  const usageTitle = usage?.freeActive
+    ? 'Scoring and writing are using free models while your Claude limit resets.'
+    : usage?.limitHit
     ? `Claude reported a usage limit: ${usage.limitHit.message}`
     : usage?.current
       ? `This 5-hour window: ${fmtTokens(usage.current.tokens)} tokens${pct !== null ? `, ${pct}% of your busiest window` : ''}. Resets in ${resetsIn(usage.current.end)}.`
@@ -100,7 +102,7 @@ export function TitleBar() {
           <button className={`chip claude-chip ${claudeChip.tone || (usageTone === 'neg' ? 'warn' : '')}`} onClick={() => go('settings')} title={`${claudeChip.text}. ${usageTitle}`}>
             <TerminalWindow size={14} />
             {claudeChip.text}
-            {usage && claude?.loggedIn && (usage.limitHit ? <span className="usage-pct">Limit reached</span> : pct !== null && <><Meter value={pct} tone={usageTone as 'warn' | ''} /><span className="usage-pct num">{pct}%</span></>)}
+            {usage && claude?.loggedIn && (usage.freeActive ? <span className="usage-pct">Free models</span> : usage.limitHit ? <span className="usage-pct">Limit reached</span> : pct !== null && <><Meter value={pct} tone={usageTone as 'warn' | ''} /><span className="usage-pct num">{pct}%</span></>)}
           </button>
         )}
         {tb.newBtn && (

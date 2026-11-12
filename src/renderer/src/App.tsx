@@ -63,6 +63,10 @@ export function App() {
     return () => { clearInterval(t); window.removeEventListener('focus', refreshUsage) }
   }, [refreshUsage])
   useEffect(() => { refreshUsage() }, [runsKey, refreshUsage])
+  // Free models switching on or off changes the title bar right away.
+  const freeMode = data?.settings.fallback?.mode
+  useEffect(() => { refreshUsage() }, [freeMode, refreshUsage])
+  useEffect(() => window.lp.free.onChange(refreshUsage), [refreshUsage])
 
   const refreshClaude = useCallback(async () => {
     setClaude(await window.lp.claude.status())

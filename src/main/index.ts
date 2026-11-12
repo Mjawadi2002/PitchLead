@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import type { Draft, Lead, Project, ResearchInput, Settings } from '@shared/types'
-import { ask, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
+import { ask, askOnce, freeError, claudeStatus, extractJson, openSignIn, AUTH_ERROR, LIMIT_ERROR } from './claude'
+import { memory } from './memory'
+import { FREE_PROVIDERS, addProvider, ensureRunning, fallbackStatus, freeRoute, install as installFree, isInstalled as freeInstalled, refreshProviders, removeProvider, setFallbackNotify, setFallbackToast, stop as stopFree, uninstall as uninstallFree, useFreeNow } from './omniroute'
+import { disconnectLinkedin, initLinkedin, openLinkedin } from './linkedin'
 import { contactPrompt, draftPrompt, meetingPrompt, sequencePrompt } from './prompts'
 import { deepen } from './fast'
 import { cancelOutbox, checkReplies, queueSequence, sendTest, startMail, stopMail, testMailbox } from './mail'
@@ -122,7 +125,7 @@ function registerIpc(): void {
         settings: d.settings,
         apiKey: db.getApiKey(),
         prompt: draftPrompt({ lead, product, sender: d.settings.senderName, channel: o.channel, lang: o.lang, previous: existing?.body, instruction: o.instruction }),
-        model: 'sonnet'
+        task: 'draft'
       })
       const j = extractJson<{ subject?: string; body?: string }>(text)
       const draft: Draft = {
@@ -159,7 +162,7 @@ function registerIpc(): void {
       while (queue.length) {
         const lead = queue.shift()!
         try {
-          const text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: contactPrompt(lead), model: 'sonnet', tools: ['WebSearch', 'WebFetch'], timeoutMs: 240000 })
+          const text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: contactPrompt(lead), task: 'contact', tools: ['WebSearch', 'WebFetch'], timeoutMs: 240000 })
           const j = extractJson<Record<string, string>>(text) ?? {}
           const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(j.email)) ? clean(j.email) : ''
           const phone = /\d{5,}/.test(clean(j.phone).replace(/\D/g, '')) ? clean(j.phone, 40) : ''
@@ -188,7 +191,47 @@ function registerIpc(): void {
     return { found, failed }
   })
 
-  ipcMain.handle('usage:get', () => usageReport())
+  ipcMain.handle('usage:get', async () => ({ ...(await usageReport()), freeActive: useFreeNow(db.get().settings) || undefined }))
+
+  // Memory
+  ipcMain.handle('memory:stats', () => memory.stats())
+  ipcMain.handle('memory:clear', () => { memory.clear(); return memory.stats() })
+
+  // Free models through LeadPitch's own OmniRoute
+  ipcMain.handle('fallback:status', () => fallbackStatus(db.get().settings))
+  ipcMain.handle('fallback:providers', () => FREE_PROVIDERS)
+  ipcMain.handle('fallback:install', async () => { await installFree(); await ensureRunning(db.get().settings); return fallbackStatus(db.get().settings) })
+  ipcMain.handle('fallback:uninstall', async () => {
+    const s = db.get().settings
+    s.fallback.mode = 'off'
+    save()
+    notify()
+    await uninstallFree()
+    return fallbackStatus(s)
+  })
+  ipcMain.handle('fallback:addProvider', async (_e, id: string, key: string) => { await addProvider(db.get().settings, id, key); return fallbackStatus(db.get().settings) })
+  ipcMain.handle('fallback:removeProvider', async (_e, id: string) => { await removeProvider(db.get().settings, id); return fallbackStatus(db.get().settings) })
+  ipcMain.handle('fallback:test', async () => {
+    const s = db.get().settings
+    try {
+      const t0 = Date.now()
+      const out = await askOnce({ settings: s, apiKey: null, prompt: 'Reply with the single word: ready', task: 'check', timeoutMs: 120000 }, await freeRoute(s))
+      return { ok: true, message: `A free model answered in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${out.trim().slice(0, 40)}` }
+    } catch (e) {
+      const st = await fallbackStatus(s)
+      if (!st.providers.length) return { ok: false, message: 'Connect a free provider first. Without one, OmniRoute has no free model to use.' }
+      return { ok: false, message: freeError((e as Error).message) }
+    }
+  })
+  ipcMain.handle('fallback:dashboard', async () => {
+    const s = db.get().settings
+    await ensureRunning(s)
+    return shell.openExternal(`http://127.0.0.1:${s.fallback.port}`)
+  })
+
+  // LinkedIn, in LeadPitch's own window
+  ipcMain.handle('linkedin:open', (_e, leadId?: string) => openLinkedin(leadId))
+  ipcMain.handle('linkedin:disconnect', () => disconnectLinkedin())
 
   // Research
   ipcMain.handle('run:start', (_e, input: ResearchInput) => startRun(input, notify).then((id) => { notify(); return id }))
@@ -205,10 +248,17 @@ function registerIpc(): void {
     const s = db.get().settings
     const prevMail = s.mail
     const prevTour = s.tour
+    const prevModels = s.models
+    const prevFallback = s.fallback
+    const prevLinkedin = s.linkedin
     Object.assign(s, patch)
     if (patch.titlebar) s.titlebar = { ...s.titlebar, ...patch.titlebar }
     if (patch.mail) s.mail = { ...prevMail, ...patch.mail }
     if (patch.tour) s.tour = { ...prevTour, ...patch.tour }
+    if (patch.models) s.models = { ...prevModels, ...patch.models }
+    if (patch.fallback) s.fallback = { ...prevFallback, ...patch.fallback }
+    if (patch.linkedin) s.linkedin = { ...prevLinkedin, ...patch.linkedin }
+    if (patch.fallback?.mode && patch.fallback.mode !== 'off' && freeInstalled()) refreshProviders(s).catch(() => {})
     if (patch.theme) nativeTheme.themeSource = patch.theme
     save()
     notify()
@@ -227,7 +277,7 @@ function registerIpc(): void {
   ipcMain.handle('claude:test', async () => {
     try {
       const t0 = Date.now()
-      const out = await ask({ settings: db.get().settings, apiKey: db.getApiKey(), prompt: 'Reply with the single word: ready', model: 'haiku', timeoutMs: 60000 })
+      const out = await ask({ settings: db.get().settings, apiKey: db.getApiKey(), prompt: 'Reply with the single word: ready', task: 'check', timeoutMs: 60000 })
       return { ok: true, message: `Claude answered in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${out.trim().slice(0, 40)}` }
     } catch (e) {
       const msg = (e as Error).message
@@ -332,7 +382,7 @@ function registerIpc(): void {
     if (!lead) throw new Error('This lead no longer exists.')
     let text: string
     try {
-      text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: sequencePrompt({ lead, product: leadProduct(lead), sender: d.settings.mail.fromName || d.settings.senderName, lang: o.lang, days: d.settings.mail.followUpDays, optOut: d.settings.mail.optOutLine }), model: 'sonnet', timeoutMs: 180000 })
+      text = await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: sequencePrompt({ lead, product: leadProduct(lead), sender: d.settings.mail.fromName || d.settings.senderName, lang: o.lang, days: d.settings.mail.followUpDays, optOut: d.settings.mail.optOutLine }), task: 'sequence', timeoutMs: 180000 })
     } catch (e) {
       throw claudeError(e)
     }
@@ -366,7 +416,7 @@ function registerIpc(): void {
     const lead = d.leads.find((l) => l.id === id)
     if (!lead) throw new Error('This lead no longer exists.')
     try {
-      lead.meetingBrief = (await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: meetingPrompt(lead, leadProduct(lead), d.settings.senderName), model: 'sonnet', timeoutMs: 180000 })).trim()
+      lead.meetingBrief = (await ask({ settings: d.settings, apiKey: db.getApiKey(), prompt: meetingPrompt(lead, leadProduct(lead), d.settings.senderName), task: 'meeting', timeoutMs: 180000 })).trim()
     } catch (e) {
       throw claudeError(e)
     }
@@ -385,9 +435,20 @@ app.whenReady().then(() => {
   nativeTheme.themeSource = db.get().settings.theme
   registerIpc()
   createWindow()
-  startMail({ notify, toast: (text) => win?.webContents.send('toast', text) })
+  const toast = (text: string) => win?.webContents.send('toast', text)
+  startMail({ notify, toast })
+  initLinkedin({ notify, toast })
+  setFallbackNotify(() => win?.webContents.send('fallback:changed'))
+  setFallbackToast(toast)
+  // Free models: load the connected providers from LeadPitch's own OmniRoute folder; start it only when it is needed.
+  const s = db.get().settings
+  if (freeInstalled() && s.fallback.mode !== 'off') {
+    refreshProviders(s).then(() => { if (s.fallback.mode === 'always') ensureRunning(s).catch(() => {}) }).catch(() => {})
+  }
+  // Closing LeadPitch closes its LinkedIn window too.
+  win?.on('closed', () => { for (const w of BrowserWindow.getAllWindows()) w.close() })
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 
-app.on('before-quit', () => { cancelAll(); stopMail(); flushNow() })
+app.on('before-quit', () => { cancelAll(); stopMail(); stopFree(); memory.flush(); flushNow() })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

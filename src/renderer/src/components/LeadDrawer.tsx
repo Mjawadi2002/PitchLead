@@ -75,6 +75,10 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
     lead.linkedin && { icon: <LinkedinLogo size={15} />, label: 'LinkedIn', value: lead.linkedin.replace(/^https?:\/\/(www\.)?/, ''), href: lead.linkedin, copy: lead.linkedin }
   ].filter(Boolean) as { icon: JSX.Element; label: string; value: string; href?: string; copy?: string }[]
   const hasDirect = !!(lead.email || lead.phone || lead.contactUrl)
+  // LinkedIn opens in LeadPitch's own LinkedIn window, signed in as you, with the note ready.
+  const openLinkedin = async () => {
+    try { await window.lp.linkedin.open(lead.id) } catch (e) { toast((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+  }
   const run = data.runs.find((r) => r.id === lead.runId)
   const verdict = lead.score >= 8 ? 'High priority. Contact this week.' : lead.score >= 5 ? 'Medium priority. Contact after the top leads.' : 'Low priority.'
 
@@ -112,7 +116,7 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
           )}
           <div className="d-links">
             {lead.website && <button className="link" onClick={() => window.lp.shell.open(lead.website)}><Globe size={13} />{hostOf(lead.website)}</button>}
-            {lead.linkedin && <button className="link" onClick={() => window.lp.shell.open(lead.linkedin)}><LinkedinLogo size={13} />LinkedIn</button>}
+            {lead.linkedin && <button className="link" onClick={openLinkedin}><LinkedinLogo size={13} />LinkedIn</button>}
           </div>
         </div>
         <div className="acts">
@@ -232,6 +236,10 @@ export function LeadDrawer({ lead }: { lead: Lead }) {
         }}>
           {STAGES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </select>
+        <button className="btn btn-ghost" title={lead.linkedinSentAt ? 'LinkedIn note sent' : 'Message this lead from your LinkedIn profile'} onClick={openLinkedin}>
+          <LinkedinLogo size={14} weight={lead.linkedinSentAt ? 'fill' : 'regular'} />
+          LinkedIn
+        </button>
         <button className="btn btn-primary" data-tour="drawer-write" onClick={() => { setOutreachLeadId(lead.id); go('outreach') }}>
           <PaperPlaneTilt size={14} />
           Write message

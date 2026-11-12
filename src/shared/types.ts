@@ -73,6 +73,8 @@ export interface Lead {
   meetingBrief?: string
   /** Never email this lead (they opted out or bounced). */
   doNotContact?: boolean
+  /** When the LinkedIn note was marked as sent from LeadPitch's LinkedIn window. */
+  linkedinSentAt?: number
 }
 
 export type LeadSource = 'map' | 'web' | 'research' | 'manual'
@@ -238,6 +240,72 @@ export interface Settings {
   tour: TourState
   /** Project shown across the app, or 'all'. */
   activeProject: string
+  models: ModelSettings
+  /** Remember websites, lookups and scores so the same work is not paid for twice. */
+  memory: boolean
+  fallback: FallbackSettings
+  linkedin: LinkedinSettings
+}
+
+/** Which model each kind of Claude task uses. */
+export interface ModelSettings {
+  /** Send quick tasks (lists, lookups) to Haiku and writing to Sonnet; keep the chosen model for deep research. */
+  smart: boolean
+  /** Use lighter models everywhere: Haiku scores, Sonnet researches. */
+  economy: boolean
+}
+
+/** Free open models through OmniRoute, used only by LeadPitch, when the Claude limit is reached. */
+export interface FallbackSettings {
+  /** off: never. auto: only after a Claude limit message, until the window resets. always: every task that does not need web search. */
+  mode: 'off' | 'auto' | 'always'
+  port: number
+  /** OmniRoute model or combo name. */
+  model: string
+}
+
+export interface FallbackStatus {
+  installed: boolean
+  installing?: boolean
+  installLog?: string
+  running: boolean
+  nodeOk: boolean
+  nodeVersion?: string
+  /** True while LeadPitch is sending tasks to free models because the Claude limit was reached. */
+  active: boolean
+  activeUntil?: number
+  models?: string[]
+  error?: string
+}
+
+export interface FreeProvider { id: string; name: string; url: string; note: string }
+
+export interface FallbackDetails extends FallbackStatus {
+  providers: { id: string; masked: string }[]
+  freeCalls: number
+  password?: string
+  port: number
+}
+
+export interface LinkedinSettings {
+  /** Notes LeadPitch lets you open per day. LinkedIn restricts accounts that send many invitations. */
+  dailyLimit: number
+}
+
+export interface LinkedinStatus {
+  connected: boolean
+  sentToday: number
+}
+
+export interface MemoryStats {
+  sites: number
+  lookups: number
+  scores: number
+  lists: number
+  briefs: number
+  /** Claude calls the memory has saved since it was cleared. */
+  savedCalls: number
+  bytes: number
 }
 
 export interface TourState {
@@ -261,6 +329,8 @@ export interface UsageReport {
   weekTokens: number
   weekMessages: number
   limitHit?: { at: number; message: string }
+  /** LeadPitch is sending tasks to free models because the Claude limit was reached. */
+  freeActive?: boolean
   checkedAt: number
 }
 
@@ -274,6 +344,7 @@ export interface Snapshot {
   hasApiKey: boolean
   hasMailPassword: boolean
   mailStatus: MailStatus
+  linkedinStatus: LinkedinStatus
 }
 
 export interface ClaudeStatus {
@@ -361,5 +432,9 @@ export const DEFAULT_SETTINGS: Settings = {
   parallel: 3,
   mail: DEFAULT_MAIL,
   tour: { status: 'new', step: 0, startedAt: 0 },
-  activeProject: 'all'
+  activeProject: 'all',
+  models: { smart: true, economy: false },
+  memory: true,
+  fallback: { mode: 'off', port: 20129, model: 'auto' },
+  linkedin: { dailyLimit: 20 }
 }

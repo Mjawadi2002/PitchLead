@@ -21,15 +21,24 @@ const cache = new Map<string, { mtime: number; size: number; entries: Entry[] }>
 let limitHit: { at: number; message: string } | undefined
 
 /** Records the tokens of one Claude reply that LeadPitch made (from the result's usage block). */
-export function recordUsage(u: any): void {
+export function recordUsage(u: any, model?: string, cost?: number): void {
   if (!u) return
   const tokens = (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0)
   if (!tokens) return
   const log = db.get().usageLog
-  log.push({ t: Date.now(), tokens })
+  log.push(model ? { t: Date.now(), tokens, m: model, ...(cost ? { c: Math.round(cost * 10000) / 10000 } : {}) } : { t: Date.now(), tokens })
   const cutoff = Date.now() - 31 * DAY
   while (log.length && log[0].t < cutoff) log.shift()
   save()
+}
+
+/** Records one Claude reply per model it used (Claude Code reports each model separately). */
+export function recordModelUsage(modelUsage: Record<string, any> | undefined, fallback: any): void {
+  const entries = Object.entries(modelUsage ?? {})
+  if (!entries.length) return recordUsage(fallback)
+  for (const [model, u] of entries) {
+    recordUsage({ input_tokens: u?.inputTokens, output_tokens: u?.outputTokens, cache_creation_input_tokens: u?.cacheCreationInputTokens }, model, u?.costUSD)
+  }
 }
 
 export function noteLimit(message: string): void {

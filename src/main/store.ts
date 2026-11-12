@@ -12,7 +12,7 @@ interface Data {
   drafts: Draft[]
   outbox: OutboxItem[]
   /** Tokens per Claude reply that LeadPitch made, for the usage meter. Claude Code keeps no log for these. */
-  usageLog: { t: number; tokens: number }[]
+  usageLog: { t: number; tokens: number; m?: string; c?: number }[]
   settings: Settings
   apiKey?: string // encrypted with safeStorage, base64
   mailPassword?: string // encrypted with safeStorage, base64
@@ -28,6 +28,12 @@ export function shortName(product: string): string {
 
 /** Live mailbox state, kept in memory and sent with every snapshot. */
 export const mailStatus: MailStatus = { connected: false, sentToday: 0 }
+
+/** Whether LeadPitch's own LinkedIn window is signed in. Set by linkedin.ts. */
+export const linkedinState = { connected: false }
+
+const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }
+export const linkedinSentToday = () => data.leads.filter((l) => (l.linkedinSentAt ?? 0) >= startOfDay()).length
 
 const dir = () => app.getPath('userData')
 const file = () => join(dir(), 'leadpitch.json')
@@ -52,7 +58,10 @@ export function loadStore(): void {
         ...(raw.settings ?? {}),
         titlebar: { ...DEFAULT_SETTINGS.titlebar, ...(raw.settings?.titlebar ?? {}) },
         mail: { ...DEFAULT_MAIL, ...(raw.settings?.mail ?? {}) },
-        tour: { ...DEFAULT_SETTINGS.tour, ...(raw.settings?.tour ?? {}) }
+        tour: { ...DEFAULT_SETTINGS.tour, ...(raw.settings?.tour ?? {}) },
+        models: { ...DEFAULT_SETTINGS.models, ...(raw.settings?.models ?? {}) },
+        fallback: { ...DEFAULT_SETTINGS.fallback, ...(raw.settings?.fallback ?? {}) },
+        linkedin: { ...DEFAULT_SETTINGS.linkedin, ...(raw.settings?.linkedin ?? {}) }
       }
     }
     data.projects ??= []
@@ -134,7 +143,8 @@ export const db = {
       settings: data.settings,
       hasApiKey: !!data.apiKey,
       hasMailPassword: !!data.mailPassword,
-      mailStatus: { ...mailStatus }
+      mailStatus: { ...mailStatus },
+      linkedinStatus: { connected: linkedinState.connected, sentToday: linkedinSentToday() }
     }
   },
   setApiKey(key: string | null): void {

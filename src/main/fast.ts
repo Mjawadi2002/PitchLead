@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto'
 import type { Lead, ResearchInput, Run, RunEvent, RunStage, Settings } from '@shared/types'
+import { briefKey, key, memory, type Lookup } from './memory'
+import type { Task } from './models'
 import { AUTH_ERROR, LIMIT_ERROR, ask, extractJson } from './claude'
 import { deepPrompt, lookupPrompt, scorePrompt, webListPrompt } from './prompts'
 import { findOnMap, tagsFor, type MapCandidate } from './sources/osm'
@@ -65,8 +67,8 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
     run.phase = (run.stages ?? []).filter((x) => x.status === 'done' || x.status === 'skipped').length
     ctx.notify()
   }
-  const claude = (prompt: string, tools: string[] = [], timeoutMs = 300000) =>
-    ask({ settings, apiKey: ctx.apiKey, prompt, tools, model: settings.model, timeoutMs, signal })
+  const claude = (task: Task, prompt: string, tools: string[] = [], timeoutMs = 300000) =>
+    ask({ settings, apiKey: ctx.apiKey, prompt, tools, task, timeoutMs, signal })
   const fail = (e: unknown): string => {
     const msg = (e as Error).message
     if (LIMIT_ERROR.test(msg)) noteLimit(msg)
@@ -77,6 +79,13 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
   // Map places are free to collect, so take more of them; web lists use Claude, so they stay closer to the target.
   const mapPool = Math.min(220, Math.max(target + 10, Math.ceil(target * 2.5)))
   const poolSize = Math.min(160, Math.max(target + 5, Math.ceil(target * 1.6)))
+  // Memory: work already done for this project (same product and buyer) is reused, not paid for again.
+  const useMem = settings.memory !== false
+  const bk = briefKey(input)
+  const area = input.location
+  const scoreKey = (c: Candidate) => `${bk}|${key(c.name, area)}`
+  const weak = (c: Candidate) => useMem && Number(memory.get('scores', scoreKey(c))?.score ?? 10) < 3
+  const reused = { lists: 0, lookups: 0, scores: 0, sites: 0, calls: 0 }
   const known = new Set(ctx.existing.flatMap((l) => [norm(l.name), norm(l.website)]).filter(Boolean))
   const cands: Candidate[] = []
   const addCand = (c: Candidate) => {
@@ -96,15 +105,36 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
       const { candidates, note } = await findOnMap(input.industry, input.location, mapPool, signal)
       push({ kind: 'note', text: note })
       const independent = candidates.filter((c: MapCandidate) => !c.chain)
-      for (const c of (independent.length >= mapPool / 2 ? independent : candidates).slice(0, mapPool)) {
-        addCand({ name: c.name, category: c.category, location: c.city || input.location, address: c.address, website: c.website, phone: c.phone, email: c.email, socials: c.socials, note: c.openingHours ? `Hours: ${c.openingHours}` : '', source: 'map', chain: c.chain })
+      let skippedWeak = 0
+      for (const c of independent.length >= mapPool / 2 ? independent : candidates) {
+        if (cands.length >= mapPool) break
+        const cand: Candidate = { name: c.name, category: c.category, location: c.city || input.location, address: c.address, website: c.website, phone: c.phone, email: c.email, socials: c.socials, note: c.openingHours ? `Hours: ${c.openingHours}` : '', source: 'map', chain: c.chain }
+        if (weak(cand)) { skippedWeak++; continue }
+        addCand(cand)
       }
+      if (skippedWeak) push({ kind: 'note', text: `Memory: skipped ${skippedWeak} places that scored as poor fits before` })
     } catch (e) {
       if (stopped()) return {}
       push({ kind: 'error', text: (e as Error).message })
     }
   }
   // Web lists fill the pool when the map has too few (or no map category exists).
+  // Companies listed for this industry and location in the last week come from memory first.
+  const listKey = key(input.industry, input.location, input.size)
+  const listed: any[] = useMem ? [...(memory.get('lists', listKey) ?? [])] : []
+  const listsFor = (n: number) => (n > 0 ? Math.min(5, Math.max(1, Math.ceil(n / 30))) : 0)
+  if (listed.length && poolSize - cands.length > 0) {
+    const before = cands.length
+    const wanted = listsFor(poolSize - cands.length)
+    for (const r of listed) {
+      if (cands.length >= poolSize) break
+      const cand: Candidate = { name: str(r.name, 120), category: str(r.category, 80), location: str(r.location, 120) || input.location, address: '', website: isUrl(str(r.website)) ? str(r.website, 300) : '', phone: str(r.phone, 40), email: '', socials: [], note: str(r.note, 160), source: 'web', chain: false }
+      if (cand.name && !weak(cand)) addCand(cand)
+    }
+    reused.lists = cands.length - before
+    reused.calls += wanted - listsFor(poolSize - cands.length)
+    if (reused.lists) push({ kind: 'note', text: `Memory: ${reused.lists} companies from earlier web lists for this area` })
+  }
   const short = poolSize - cands.length
   if (short > 0 && !stopped()) {
     stage('find', { detail: `Searching the web for ${short} more` })
@@ -113,7 +143,7 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
     try {
       await pool(Array.from({ length: lists }, (_, i) => i), Math.min(settings.parallel || 3, lists), async (i) => {
         push({ kind: 'search', text: `Web list ${i + 1} of ${lists}: ${per} companies${lists > 1 ? `, ${ANGLES[i % ANGLES.length]}` : ''}` })
-        const text = await claude(webListPrompt(input, per, [...ctx.existing.map((l) => l.name), ...cands.map((c) => c.name)], lists > 1 ? ANGLES[i % ANGLES.length] : undefined), ['WebSearch'])
+        const text = await claude('list', webListPrompt(input, per, [...ctx.existing.map((l) => l.name), ...cands.map((c) => c.name)], lists > 1 ? ANGLES[i % ANGLES.length] : undefined), ['WebSearch'])
         const arr = extractJson<any[]>(text) ?? []
         let n = 0
         for (const r of Array.isArray(arr) ? arr : []) {
@@ -121,10 +151,12 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
           if (!name) continue
           const website = isUrl(str(r.website)) ? str(r.website, 300) : ''
           const before = cands.length
+          listed.push({ name, category: str(r.category, 80), location: str(r.location, 120), website, phone: str(r.phone, 40), note: str(r.note, 160) })
           addCand({ name, category: str(r.category, 80), location: str(r.location, 120) || input.location, address: '', website, phone: str(r.phone, 40), email: '', socials: [], note: str(r.note, 160), source: 'web', chain: false })
           if (cands.length > before) n++
         }
         push({ kind: 'note', text: `Web list ${i + 1}: ${n} new companies` })
+        if (useMem) memory.set('lists', listKey, listed.slice(-400))
       }, stopped)
     } catch (e) {
       if (stopped()) return {}
@@ -139,23 +171,38 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
 
   // ---------- 2. Read websites ----------
   stage('read', { status: 'running', detail: 'Finding missing websites' })
-  const missing = cands.map((c, id) => ({ c, id })).filter(({ c }) => !c.website || isSocial(c.website))
+  const applyLookup = (c: Candidate, r: Lookup) => {
+    const w = str(r.website, 300)
+    if (isUrl(w) && !isSocial(w)) c.website = w
+    else if (isUrl(w) && isSocial(w)) c.socials.push(w)
+    if (!c.phone && str(r.phone, 40).replace(/\D/g, '').length >= 8) c.phone = str(r.phone, 40)
+    if (isUrl(str(r.social, 300))) c.socials.push(str(r.social, 300))
+    if (str(r.note, 160)) c.note = [c.note, str(r.note, 160)].filter(Boolean).join('. ')
+  }
+  const lookupKey = (c: Candidate) => key(c.name, area)
+  const missing = cands.map((c, id) => ({ c, id })).filter(({ c }) => {
+    if (c.website && !isSocial(c.website)) return false
+    const hit = useMem ? memory.get('lookups', lookupKey(c)) : undefined
+    if (hit) { applyLookup(c, hit); reused.lookups++; return false }
+    return true
+  })
+  if (reused.lookups) {
+    reused.calls += Math.ceil(reused.lookups / 15)
+    push({ kind: 'note', text: `Memory: websites and phones for ${reused.lookups} companies were looked up before` })
+  }
   if (missing.length && !stopped()) {
     const chunks: (typeof missing)[] = []
     for (let i = 0; i < missing.length; i += 15) chunks.push(missing.slice(i, i + 15))
     try {
       await pool(chunks, settings.parallel || 3, async (chunk, i) => {
         push({ kind: 'search', text: `Looking up websites and phones, group ${i + 1} of ${chunks.length}` })
-        const text = await claude(lookupPrompt(chunk.map(({ c, id }) => ({ id, name: c.name, location: c.address || c.location, category: c.category }))), ['WebSearch'])
+        const text = await claude('lookup', lookupPrompt(chunk.map(({ c, id }) => ({ id, name: c.name, location: c.address || c.location, category: c.category }))), ['WebSearch'])
         for (const r of extractJson<any[]>(text) ?? []) {
           const hit = chunk.find((x) => x.id === Number(r?.id))
           if (!hit) continue
-          const w = str(r.website, 300)
-          if (isUrl(w) && !isSocial(w)) hit.c.website = w
-          else if (isUrl(w) && isSocial(w)) hit.c.socials.push(w)
-          if (!hit.c.phone && str(r.phone, 40).replace(/\D/g, '').length >= 8) hit.c.phone = str(r.phone, 40)
-          if (isUrl(str(r.social, 300))) hit.c.socials.push(str(r.social, 300))
-          if (str(r.note, 160)) hit.c.note = [hit.c.note, str(r.note, 160)].filter(Boolean).join('. ')
+          const found: Lookup = { website: str(r.website, 300), phone: str(r.phone, 40), social: str(r.social, 300), note: str(r.note, 160) }
+          applyLookup(hit.c, found)
+          if (useMem) memory.set('lookups', lookupKey(hit.c), found)
         }
       }, stopped)
     } catch (e) {
@@ -168,7 +215,13 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
   stage('read', { detail: `Reading ${withSite.length} websites` })
   let readDone = 0
   await pool(withSite, 10, async (c) => {
-    c.site = await readWebsite(c.website, signal)
+    const siteKey = key(c.website)
+    const cached = useMem ? memory.get('sites', siteKey) : undefined
+    if (cached) { c.site = cached; reused.sites++ }
+    else {
+      c.site = await readWebsite(c.website, signal)
+      if (useMem && !signal.aborted) memory.set('sites', siteKey, c.site)
+    }
     readDone++
     if (c.site.ok) push({ kind: 'fetch', text: `${c.name}: ${[c.site.emails.length && `${c.site.emails.length} email`, c.site.phones.length && `${c.site.phones.length} phone`, c.site.tech.length && c.site.tech.join(', ')].filter(Boolean).join(', ') || 'read'}` })
     if (readDone % 5 === 0) stage('read', { detail: `Read ${readDone} of ${withSite.length} websites` })
@@ -194,20 +247,37 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
     tech: c.site?.tech.length ? c.site.tech : undefined,
     people: c.site?.people.length ? c.site.people.slice(0, 2) : undefined
   }))
-  const scoreChunks: (typeof facts)[] = []
-  for (let i = 0; i < facts.length; i += 20) scoreChunks.push(facts.slice(i, i + 20))
   const scores = new Map<number, any>()
+  if (useMem) {
+    for (const f of facts) {
+      const r = memory.get('scores', scoreKey(cands[f.id]))
+      if (r) { scores.set(f.id, r); reused.scores++ }
+    }
+    if (reused.scores) {
+      reused.calls += Math.ceil(reused.scores / 20)
+      push({ kind: 'note', text: `Memory: ${reused.scores} companies were scored before for this project` })
+    }
+  }
+  const toScore = facts.filter((f) => !scores.has(f.id))
+  const scoreChunks: (typeof facts)[] = []
+  for (let i = 0; i < toScore.length; i += 20) scoreChunks.push(toScore.slice(i, i + 20))
+  const scoreInput = scoreChunks.length ? await withBrief(input, settings, ctx.apiKey, signal, push) : input
   let scoreErr = ''
   let scoredChunks = 0
   await pool(scoreChunks, settings.parallel || 3, async (chunk) => {
     try {
-      const text = await claude(scorePrompt(input, chunk), [], 240000)
-      for (const r of extractJson<any[]>(text) ?? []) if (Number.isFinite(Number(r?.id))) scores.set(Number(r.id), r)
+      const text = await claude('score', scorePrompt(scoreInput, chunk), [], 240000)
+      for (const r of extractJson<any[]>(text) ?? []) {
+        const id = Number(r?.id)
+        if (!Number.isFinite(id) || !chunk.some((f) => f.id === id)) continue
+        scores.set(id, r)
+        if (useMem && Number(r.score)) memory.set('scores', scoreKey(cands[id]), r)
+      }
     } catch (e) {
       if (!stopped()) scoreErr = fail(e)
     }
     scoredChunks++
-    stage('score', { detail: `Scored ${Math.min(facts.length, scoredChunks * 20)} of ${facts.length}` })
+    stage('score', { detail: `Scored ${Math.min(facts.length, reused.scores + scoredChunks * 20)} of ${facts.length}` })
     push({ kind: 'note', text: `Scored ${scores.size} companies so far` })
   }, () => stopped() || /^AUTH:/.test(scoreErr) || LIMIT_ERROR.test(scoreErr))
   if (stopped()) return {}
@@ -288,13 +358,15 @@ export async function runFast(ctx: FastContext): Promise<{ error?: string; warni
       : scoreErr
         ? `Some groups could not be scored: ${scoreErr.replace(/^AUTH:\s*/, '')}`
         : undefined
-  run.summary = `${cands.length} companies found${mapped ? ` (${cands.filter((c) => c.source === 'map').length} from the map)` : ''}, ${withSite.filter((c) => c.site?.ok).length} websites read by code, ${leads.length} kept after scoring.`
+  if (useMem) memory.saved(reused.calls)
+  const memLine = reused.calls ? ` Memory saved ${reused.calls} Claude ${reused.calls === 1 ? 'call' : 'calls'}${reused.sites ? ` and ${reused.sites} website reads` : ''}.` : ''
+  run.summary = `${cands.length} companies found${mapped ? ` (${cands.filter((c) => c.source === 'map').length} from the map)` : ''}, ${withSite.filter((c) => c.site?.ok).length} websites read by code, ${leads.length} kept after scoring.${memLine}`
   return { warning }
 }
 
 /** Researches one lead with web tools and merges what it finds. Used by the run and by the lead panel. */
 export async function deepen(lead: Lead, input: ResearchInput | null, settings: Settings, apiKey: string | null, signal?: AbortSignal): Promise<void> {
-  const text = await ask({ settings, apiKey, prompt: deepPrompt(lead, input), tools: ['WebSearch', 'WebFetch'], model: settings.model, timeoutMs: 600000, signal })
+  const text = await ask({ settings, apiKey, prompt: deepPrompt(lead, input), tools: ['WebSearch', 'WebFetch'], task: 'deep', timeoutMs: 600000, signal })
   const r = extractJson<any>(text)
   if (!r) throw new Error('Claude returned no research for this company.')
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str(r.email)) ? str(r.email, 120) : ''
@@ -316,4 +388,28 @@ export async function deepen(lead: Lead, input: ResearchInput | null, settings: 
     deepResearched: true,
     updatedAt: Date.now()
   } satisfies Partial<Lead>)
+}
+
+/**
+ * When the project has a product folder, Claude reads it once and writes a short summary.
+ * The summary is kept, so later runs send a few lines instead of re-reading the folder.
+ * Scoring has no file tools, so without this a folder-only project would score blind.
+ */
+export async function withBrief(input: ResearchInput, settings: Settings, apiKey: string | null, signal: AbortSignal | undefined, push?: FastContext['push']): Promise<ResearchInput> {
+  if (!input.folder) return input
+  const k = briefKey(input)
+  let brief = settings.memory !== false ? memory.get('briefs', k) : undefined
+  if (!brief) {
+    try {
+      push?.({ kind: 'read', text: 'Reading the product folder once for a short summary' })
+      brief = (await ask({
+        settings, apiKey, task: 'brief', signal, timeoutMs: 300000, tools: ['Read', 'Glob', 'Grep'], addDirs: [input.folder],
+        prompt: `Read the product folder at ${input.folder} (README, docs, landing page copy, pricing). Then write a plain summary under 140 words: what the product is, who it is for, the problem it solves, the main features, and pricing if stated. No emoji, no headings, no marketing filler.${input.product ? `\n\nThe owner describes it as: ${input.product}` : ''}`
+      })).trim().slice(0, 1400)
+      if (brief && settings.memory !== false) memory.set('briefs', k, brief)
+    } catch {
+      return input
+    }
+  }
+  return brief ? { ...input, product: [input.product.trim(), `From the product folder: ${brief}`].filter(Boolean).join('\n\n') } : input
 }
